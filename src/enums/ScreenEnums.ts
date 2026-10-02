@@ -1,0 +1,15 @@
+export const STACKS = {
+  HOME: 'Home',
+  HOME_MAIN: 'HomeMain',
+  MEMBERSHIP_DRIVE: 'MembershipDrive',
+  APPLICATION_FORM: 'ApplicationForm',
+  MEMBERS: 'Members',
+  MEMBERS_LIST: 'MembersList',
+  MEMBER_DETAIL: 'MemberDetail',
+  CASES: 'Cases',
+  MORE: 'More',
+  SPLASH: 'Splash',
+  LANDING: 'Landing',
+} as const;
+
+export type StackName = (typeof STACKS)[keyof typeof STACKS];
