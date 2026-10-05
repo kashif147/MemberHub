@@ -41,8 +41,8 @@ const PersonalInformation = ({
   return (
     <View>
       <FormSection title="Personal information">
-        <FieldRow>
-          <FieldCol>
+        {/* <FieldRow> */}
+          {/* <FieldCol> */}
             <FieldLabel label="Title" required error={err('title')} />
             <SelectField
               value={formData?.title || ''}
@@ -51,37 +51,24 @@ const PersonalInformation = ({
               onSelect={v => set('title', v)}
               error={err('title')}
             />
-          </FieldCol>
-          <FieldCol>
-            <FieldLabel label="Gender" required error={err('gender')} />
-            <SelectField
-              value={formData?.gender || ''}
-              placeholder="Select..."
-              options={GENDERS}
-              onSelect={v => set('gender', v)}
-              error={err('gender')}
-            />
-          </FieldCol>
-        </FieldRow>
-
-        <FieldRow>
-          <FieldCol>
+          {/* </FieldCol> */}
+          {/* <FieldCol> */}
             <FieldLabel label="Forename" required error={err('forename')} />
             <TextField
               value={formData?.forename || ''}
               onChangeText={t => set('forename', t)}
               error={err('forename')}
             />
-          </FieldCol>
-          <FieldCol>
+          {/* </FieldCol> */}
+          {/* <FieldCol> */}
             <FieldLabel label="Surname" required error={err('surname')} />
             <TextField
               value={formData?.surname || ''}
               onChangeText={t => set('surname', t)}
               error={err('surname')}
             />
-          </FieldCol>
-        </FieldRow>
+          {/* </FieldCol> */}
+        {/* </FieldRow> */}
 
         <FieldLabel label="Date of birth" required error={err('dob')} />
         <DateField

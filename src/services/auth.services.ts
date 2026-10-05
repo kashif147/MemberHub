@@ -1,3 +1,4 @@
+import { jwtDecode } from 'jwt-decode';
 import { AppDispatch } from '../store';
 import {
   setDetail,
@@ -13,8 +14,15 @@ import {
   saveUser,
   setBearerToken,
   setLoginFlag,
+  setRefreshToken,
 } from '../helpers/auth.helper';
-import { signInCredentialsRequest, validationRequest } from '../api/auth.api';
+import {
+  signInAzureCrmRequest,
+  signInCredentialsRequest,
+  validationRequest,
+} from '../api/auth.api';
+import { clearPkce, getPkceRedirectUri } from '../helpers/microsoftAuth.helper';
+import { decryptCrmAccessToken } from '../helpers/tokenDecrypt.helper';
 import type { AuthUser } from '../store/initialState';
 
 const DEMO_OFFICER: AuthUser = {
@@ -27,7 +35,6 @@ const DEMO_OFFICER: AuthUser = {
   initials: 'KR',
 };
 
-/** Bootstrap session on app start (Portal_App validation pattern). */
 export const validation = () => async (dispatch: AppDispatch) => {
   dispatch(setLoading(true));
   try {
@@ -39,7 +46,6 @@ export const validation = () => async (dispatch: AppDispatch) => {
       return;
     }
 
-    // Prefer live /api/me when CRM is reachable; fall back to cached user.
     try {
       const res = await validationRequest();
       if (res?.status === 200 && res?.data) {
@@ -61,6 +67,15 @@ export const validation = () => async (dispatch: AppDispatch) => {
       return;
     }
 
+    // Token present — try JWT claims
+    const fromJwt = userFromJwt(token);
+    if (fromJwt) {
+      dispatch(setUser(fromJwt));
+      dispatch(setDetail(fromJwt));
+      dispatch(setSignedIn(true));
+      return;
+    }
+
     dispatch(setSignedIn(false));
   } finally {
     dispatch(setLoading(false));
@@ -73,8 +88,9 @@ const mapMeToUser = (payload: any): AuthUser => {
     data?.name ||
     [data?.firstName, data?.lastName].filter(Boolean).join(' ') ||
     data?.userName ||
+    data?.preferred_username ||
     'Branch Officer';
-  const initials = name
+  const initials = String(name)
     .split(' ')
     .map((p: string) => p[0])
     .join('')
@@ -82,20 +98,59 @@ const mapMeToUser = (payload: any): AuthUser => {
     .toUpperCase();
 
   return {
-    id: data?.id || data?.userId,
+    id: data?.id || data?.userId || data?.sub,
     name,
-    email: data?.email || data?.userEmail,
+    email: data?.email || data?.userEmail || data?.preferred_username,
     memberNo: data?.memberNo || data?.membershipNumber || data?.userCode,
-    role: data?.role || data?.roles?.[0] || 'Branch Officer',
+    role:
+      (Array.isArray(data?.roles) &&
+        (typeof data.roles[0] === 'string'
+          ? data.roles[0]
+          : data.roles[0]?.name || data.roles[0]?.code)) ||
+      data?.role ||
+      'Branch Officer',
     branches: data?.branches || data?.scope || 'Assigned branches',
     initials,
   };
 };
 
+const userFromJwt = (token: string): AuthUser | null => {
+  try {
+    if (!token || token.includes(':') || token.split('.').length < 3) {
+      return null;
+    }
+    const decode: any = jwtDecode(token);
+    return mapMeToUser(decode);
+  } catch {
+    return null;
+  }
+};
+
 /**
- * Demo / offline Branch Officer sign-in for UI development.
- * Replace with Microsoft CRM SSO when backend mobile PKCE is ready.
+ * Resolve + decrypt CRM access token from /auth/azure-crm response
+ * (same as ProjectShell-1 Login.handleAuthRedirect).
  */
+const resolveAccessToken = async (data: any): Promise<string | null> => {
+  const raw =
+    data?.accessToken ||
+    data?.token ||
+    data?.data?.accessToken ||
+    data?.data?.token ||
+    null;
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return null;
+  }
+  try {
+    return await decryptCrmAccessToken(raw);
+  } catch {
+    // Plain JWT or already usable bearer
+    if (raw.split('.').length === 3) {
+      return raw.replace(/^Bearer\s+/i, '');
+    }
+    throw new Error('Unable to decrypt CRM access token');
+  }
+};
+
 export const signInAsBranchOfficer =
   () => async (dispatch: AppDispatch) => {
     dispatch(setLoading(true));
@@ -111,7 +166,6 @@ export const signInAsBranchOfficer =
     }
   };
 
-/** Credential login against CRM /auth (ProjectShell-1 compatible). */
 export const signInWithCredentials =
   (username: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setLoading(true));
@@ -121,12 +175,7 @@ export const signInWithCredentials =
         throw new Error(res?.data?.message || 'Unable to sign in');
       }
 
-      const token =
-        res?.data?.accessToken ||
-        res?.data?.token ||
-        res?.data?.data?.accessToken ||
-        res?.data?.data?.token;
-
+      const token = await resolveAccessToken(res.data);
       if (!token) {
         throw new Error('No access token returned');
       }
@@ -134,15 +183,86 @@ export const signInWithCredentials =
       await setBearerToken(token);
       await setLoginFlag(true);
 
-      const user = mapMeToUser(res.data);
+      const user = userFromJwt(token) || mapMeToUser(res.data);
       await saveUser(user);
       dispatch(setUser(user));
       dispatch(setDetail(user));
       dispatch(setSignedIn(true));
-      return { ok: true };
+      return { ok: true as const };
     } catch (err: any) {
+      return { ok: false as const, message: err?.message || 'Sign in failed' };
+    } finally {
       dispatch(setLoading(false));
-      return { ok: false, message: err?.message || 'Sign in failed' };
+    }
+  };
+
+/** Pull a readable message from CRM error envelopes (nested `error.message`). */
+const extractApiErrorMessage = (data: any, fallback: string) => {
+  if (!data) return fallback;
+  if (typeof data === 'string') return data;
+  if (typeof data?.error?.message === 'string') return data.error.message;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error === 'string') return data.error;
+  return fallback;
+};
+
+/**
+ * Microsoft SSO — Portal_App pattern against CRM endpoint:
+ * POST /auth/azure-crm { code, codeVerifier, state }
+ * (state must come from GET /pkce/generate → authorizationUrls.azureAD)
+ */
+export const signInWithMicrosoft =
+  (payload: {
+    code: string;
+    codeVerifier: string;
+    state?: string | null;
+  }) =>
+  async (dispatch: AppDispatch) => {
+    dispatch(setLoading(true));
+    try {
+      if (!payload.state) {
+        throw new Error('Missing OAuth state. Please try signing in again.');
+      }
+
+      const redirectUri = (await getPkceRedirectUri()) || undefined;
+      const res = await signInAzureCrmRequest({
+        code: payload.code,
+        codeVerifier: payload.codeVerifier,
+        state: payload.state,
+        redirectUri,
+      });
+
+      if (res?.status !== 200) {
+        const msg = extractApiErrorMessage(
+          res?.data,
+          `Authentication failed (${res?.status || 'network'})`,
+        );
+        throw new Error(msg);
+      }
+
+      const token = await resolveAccessToken(res.data);
+      if (!token) {
+        throw new Error('No access token returned from CRM');
+      }
+
+      await setBearerToken(token);
+      if (res?.data?.refresh_token) {
+        await setRefreshToken(res.data.refresh_token);
+      }
+      await setLoginFlag(true);
+      await clearPkce();
+
+      const user = userFromJwt(token) || mapMeToUser(res.data) || DEMO_OFFICER;
+      await saveUser(user);
+      dispatch(setUser(user));
+      dispatch(setDetail(user));
+      dispatch(setSignedIn(true));
+      return { ok: true as const };
+    } catch (err: any) {
+      return {
+        ok: false as const,
+        message: err?.message || 'Microsoft sign-in failed',
+      };
     } finally {
       dispatch(setLoading(false));
     }
@@ -150,5 +270,6 @@ export const signInWithCredentials =
 
 export const signOut = () => async (dispatch: AppDispatch) => {
   await clearAuthStorage();
+  await clearPkce();
   dispatch(signOutAction());
 };

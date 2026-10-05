@@ -3,19 +3,36 @@ import {
   AUTH_AZURE_CRM_PATH,
   AUTH_CREDENTIALS_PATH,
   AUTH_ME_PATH,
-  MEMBERHUB_REDIRECT_SCHEME,
+  AUTH_PKCE_GENERATE_PATH,
 } from '../constants/config';
 
-/** Same CRM Microsoft exchange as ProjectShell-1 Login.js */
+/** Backend issues PKCE + stores state (required by /auth/azure-crm). */
+export const generatePkceRequest = (flow?: string) => {
+  const config = flow ? { params: { flow } } : {};
+  return request.get(AUTH_PKCE_GENERATE_PATH, config);
+};
+
+/**
+ * CRM Microsoft exchange — same as Portal_App / backend handleAzureADCallback:
+ * POST { code, codeVerifier, state }
+ * Optional redirectUri must match the authorize URL from /pkce/generate.
+ */
 export const signInAzureCrmRequest = (data: {
   code: string;
   codeVerifier: string;
+  state: string;
   redirectUri?: string;
-}) =>
-  request.post(AUTH_AZURE_CRM_PATH, {
-    ...data,
-    redirectUri: data.redirectUri || MEMBERHUB_REDIRECT_SCHEME,
-  });
+}) => {
+  const body: Record<string, string> = {
+    code: data.code,
+    codeVerifier: data.codeVerifier,
+    state: data.state,
+  };
+  if (data.redirectUri) {
+    body.redirectUri = data.redirectUri;
+  }
+  return request.post(AUTH_AZURE_CRM_PATH, body);
+};
 
 /** Username/password — mirrors ProjectShell-1 AuthSlice loginUser */
 export const signInCredentialsRequest = (data: {
