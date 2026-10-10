@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,18 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
-import { MEMBERS, Member } from '../data/mockMembers';
+import type { Member } from '../data/mockMembers';
 import { STACKS } from '../enums/ScreenEnums';
+import { fetchMembersForUser } from '../services/members.services';
+import { refreshMeProfile } from '../services/auth.services';
+import type { AppDispatch, RootState } from '../store';
 
 const FILTER_TABS = ['Active', 'In arrears', 'Lapsed'];
 
@@ -89,30 +95,91 @@ const MemberItem = ({
 
 const MembersScreen = () => {
   const navigation = useNavigation<any>();
+  const dispatch = useDispatch<AppDispatch>();
+  const user = useSelector((s: RootState) => s.auth.user);
   const [activeFilter, setActiveFilter] = useState<string | null>('Active');
   const [search, setSearch] = useState('');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [scopeLabel, setScopeLabel] = useState(
+    user?.branches || 'Assigned locations',
+  );
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = MEMBERS.filter(m => {
-    if (activeFilter === 'In arrears') {
-      if (!m.arrears) return false;
-    } else if (activeFilter && m.status !== activeFilter) {
-      return false;
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      if (
-        !m.name.toLowerCase().includes(q) &&
-        !m.memberNo.toLowerCase().includes(q)
-      ) {
+  const loadMembers = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        let activeUser = user;
+        const missingScope =
+          !activeUser?.workLocations?.length &&
+          !activeUser?.branchFilters?.length &&
+          !activeUser?.regionFilters?.length;
+        if (missingScope || isRefresh) {
+          const me = await dispatch(refreshMeProfile());
+          if (me) activeUser = me;
+        }
+
+        const result = await fetchMembersForUser(activeUser);
+        setMembers(result.members);
+        setTotalCount(result.totalCount);
+        setScopeLabel(
+          result.scopeLabel || activeUser?.branches || 'Assigned locations',
+        );
+        if (
+          !result.filters.workLocation &&
+          !result.filters.branch &&
+          !result.filters.region
+        ) {
+          setError(
+            'No work location on your profile. Members are filtered by your /me assignedLocations.',
+          );
+        }
+      } catch (e: any) {
+        setError(e?.message || 'Unable to load members');
+        setMembers([]);
+        setTotalCount(0);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [user, dispatch],
+  );
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  const filtered = useMemo(() => {
+    return members.filter(m => {
+      if (activeFilter === 'In arrears') {
+        if (!m.arrears) return false;
+      } else if (activeFilter && m.status !== activeFilter) {
         return false;
       }
-    }
-    return true;
-  });
+      if (search) {
+        const q = search.toLowerCase();
+        if (
+          !m.name.toLowerCase().includes(q) &&
+          !m.memberNo.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [members, activeFilter, search]);
+
+  const role = user?.role || 'Branch Officer';
 
   return (
     <View style={styles.screen}>
-      <Header title="Members" />
+      <Header title="Members" role={role} branch={scopeLabel} />
       <View style={styles.content}>
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
@@ -125,7 +192,10 @@ const MembersScreen = () => {
               onChangeText={setSearch}
             />
           </View>
-          <TouchableOpacity style={styles.filterBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.filterBtn}
+            activeOpacity={0.7}
+            onPress={() => loadMembers(true)}>
             <Text style={styles.filterIcon}>⚙</Text>
           </TouchableOpacity>
         </View>
@@ -151,27 +221,55 @@ const MembersScreen = () => {
         </View>
 
         <Text style={styles.countText}>
-          {filtered.length} of {MEMBERS.length} members in Beaumont & Mater
-          branches
+          {filtered.length} of {totalCount || members.length} members in{' '}
+          {scopeLabel}
         </Text>
 
-        <FlatList
-          data={filtered}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <MemberItem
-              item={item}
-              onPress={() =>
-                navigation.navigate(STACKS.MEMBER_DETAIL, {
-                  memberId: item.id,
-                })
-              }
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={Colors.primary} />
+            <Text style={styles.hint}>Loading members…</Text>
+          </View>
+        ) : error && members.length === 0 ? (
+          <View style={styles.centered}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryBtn}
+              onPress={() => loadMembers()}
+              activeOpacity={0.7}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <MemberItem
+                item={item}
+                onPress={() =>
+                  navigation.navigate(STACKS.MEMBER_DETAIL, {
+                    memberId: item.id,
+                    member: item,
+                  })
+                }
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => loadMembers(true)}
+                tintColor={Colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>No members match this filter.</Text>
+            }
+          />
+        )}
       </View>
     </View>
   );
@@ -239,7 +337,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 10,
   },
-  listContent: { paddingBottom: 40 },
+  listContent: { paddingBottom: 40, flexGrow: 1 },
   separator: { height: 1, backgroundColor: Colors.borderLight },
   memberItem: {
     flexDirection: 'row',
@@ -276,6 +374,35 @@ const styles = StyleSheet.create({
   },
   statusBadgeText: { fontSize: 11, fontWeight: '600' },
   arrears: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  hint: { fontSize: 13, color: Colors.textSecondary },
+  errorText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  retryText: { color: Colors.primary, fontWeight: '700' },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 40,
+    color: Colors.textSecondary,
+    fontSize: 14,
+  },
 });
 
 export default MembersScreen;

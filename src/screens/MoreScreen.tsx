@@ -74,7 +74,8 @@ const MoreScreen = () => {
           <Text style={styles.scopeLabel}>YOUR SCOPE</Text>
           <Text style={styles.scopeTitle}>{branches}</Text>
           <Text style={styles.scopeSubtitle}>
-            8 members · set by your rep role in the CRM
+            {(user?.workLocations || []).join(', ') ||
+              'Set by your work location on /me'}
           </Text>
         </View>
 

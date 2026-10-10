@@ -23,6 +23,7 @@ import {
 } from '../api/auth.api';
 import { clearPkce, getPkceRedirectUri } from '../helpers/microsoftAuth.helper';
 import { decryptCrmAccessToken } from '../helpers/tokenDecrypt.helper';
+import { extractLocationScopeFromMe } from '../helpers/meLocation.helper';
 import type { AuthUser } from '../store/initialState';
 
 const DEMO_OFFICER: AuthUser = {
@@ -86,6 +87,7 @@ const mapMeToUser = (payload: any): AuthUser => {
   const data = payload?.data?.data ?? payload?.data ?? payload;
   const name =
     data?.name ||
+    data?.userFullName ||
     [data?.firstName, data?.lastName].filter(Boolean).join(' ') ||
     data?.userName ||
     data?.preferred_username ||
@@ -97,8 +99,10 @@ const mapMeToUser = (payload: any): AuthUser => {
     .slice(0, 2)
     .toUpperCase();
 
+  const location = extractLocationScopeFromMe(payload);
+
   return {
-    id: data?.id || data?.userId || data?.sub,
+    id: data?.id || data?.userId || data?.sub || data?._id,
     name,
     email: data?.email || data?.userEmail || data?.preferred_username,
     memberNo: data?.memberNo || data?.membershipNumber || data?.userCode,
@@ -109,9 +113,44 @@ const mapMeToUser = (payload: any): AuthUser => {
           : data.roles[0]?.name || data.roles[0]?.code)) ||
       data?.role ||
       'Branch Officer',
-    branches: data?.branches || data?.scope || 'Assigned branches',
+    branches: location.scopeLabel,
     initials,
+    workLocations: location.workLocations,
+    branchFilters: location.branches,
+    regionFilters: location.regions,
   };
+};
+
+/** After Azure/credentials token is stored — load /api/me for location scope. */
+const fetchAndApplyMe = async (
+  dispatch: AppDispatch,
+  fallback?: AuthUser | null,
+) => {
+  try {
+    const res = await validationRequest();
+    if (res?.status === 200 && res?.data) {
+      const me = mapMeToUser(res.data);
+      await saveUser(me);
+      dispatch(setUser(me));
+      dispatch(setDetail(me));
+      return me;
+    }
+  } catch {
+    // keep fallback
+  }
+  if (fallback) {
+    await saveUser(fallback);
+    dispatch(setUser(fallback));
+    dispatch(setDetail(fallback));
+  }
+  return fallback || null;
+};
+
+/** Re-fetch /api/me (e.g. Members screen when assignedLocations missing from cache). */
+export const refreshMeProfile = () => async (dispatch: AppDispatch) => {
+  const token = await getBearerToken();
+  if (!token) return null;
+  return fetchAndApplyMe(dispatch, null);
 };
 
 const userFromJwt = (token: string): AuthUser | null => {
@@ -183,10 +222,8 @@ export const signInWithCredentials =
       await setBearerToken(token);
       await setLoginFlag(true);
 
-      const user = userFromJwt(token) || mapMeToUser(res.data);
-      await saveUser(user);
-      dispatch(setUser(user));
-      dispatch(setDetail(user));
+      const fallback = userFromJwt(token) || mapMeToUser(res.data);
+      await fetchAndApplyMe(dispatch, fallback);
       dispatch(setSignedIn(true));
       return { ok: true as const };
     } catch (err: any) {
@@ -252,10 +289,9 @@ export const signInWithMicrosoft =
       await setLoginFlag(true);
       await clearPkce();
 
-      const user = userFromJwt(token) || mapMeToUser(res.data) || DEMO_OFFICER;
-      await saveUser(user);
-      dispatch(setUser(user));
-      dispatch(setDetail(user));
+      // /api/me supplies workLocation / branch / region for Members filter
+      const fallback = userFromJwt(token) || mapMeToUser(res.data) || DEMO_OFFICER;
+      await fetchAndApplyMe(dispatch, fallback);
       dispatch(setSignedIn(true));
       return { ok: true as const };
     } catch (err: any) {

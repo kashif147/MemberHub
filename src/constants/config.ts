@@ -19,6 +19,15 @@ export const POLICY_SERVICE_URL = `${API_BASE_URL}/api`;
 export const PROFILE_SERVICE_URL =
   'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/profile-service/api';
 
+/**
+ * Subscription members filter — same as ProjectShell-1 REACT_APP_SUBSCRIPTION.
+ */
+export const SUBSCRIPTION_SERVICE_URL =
+  'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/subscription-service/api/v1';
+
+/** System-default Members grid template (CRM /members filter). */
+export const MEMBERS_FILTER_TEMPLATE_ID = '69ec6b70ed31fde95f0d478e';
+
 /** CRM Azure AD token exchange */
 export const AUTH_AZURE_CRM_PATH = '/auth/azure-crm';
 

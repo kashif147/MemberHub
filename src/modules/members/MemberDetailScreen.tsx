@@ -11,9 +11,10 @@ import { Colors } from '../../theme/colors';
 import { getMemberById } from '../../data/mockMembers';
 import { getCasesForMember } from '../../data/mockCases';
 import { Header } from '../../components/Header';
+import type { Member } from '../../data/mockMembers';
 
 type RouteParams = {
-  MemberDetail: { memberId: string };
+  MemberDetail: { memberId: string; member?: Member };
 };
 
 type TabKey = 'Overview' | 'History' | 'Cases';
@@ -49,7 +50,10 @@ const MemberDetailScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'MemberDetail'>>();
   const memberId = route.params?.memberId;
-  const member = useMemo(() => getMemberById(memberId), [memberId]);
+  const member = useMemo(
+    () => route.params?.member || getMemberById(memberId),
+    [memberId, route.params?.member],
+  );
   const memberCases = useMemo(
     () => getCasesForMember(memberId),
     [memberId],

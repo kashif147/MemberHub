@@ -4,8 +4,13 @@ export type AuthUser = {
   email?: string;
   memberNo?: string;
   role?: string;
+  /** Display label for header / scope card */
   branches?: string;
   initials?: string;
+  /** From /me — used to filter subscription members */
+  workLocations?: string[];
+  branchFilters?: string[];
+  regionFilters?: string[];
 };
 
 export type AuthState = {
