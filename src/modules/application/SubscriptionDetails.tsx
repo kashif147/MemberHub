@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import {
   ConsentSwitch,
@@ -9,14 +9,14 @@ import {
   TextField,
 } from './formFields';
 import { Colors } from '../../theme/colors';
-
-const PAYMENT_TYPES = [
-  'Credit Card',
-  'Card Payment',
-  'Payroll Deduction',
-  'Deduction at Source',
-  'Direct Debit',
-];
+import { useLookup } from '../../contexts/lookupContext';
+import { calculateAgeFromDateOfBirth } from '../../helpers/date.helper';
+import {
+  getDefaultFrequencyForPaymentType,
+  getFrequencyOptionsForPaymentType,
+  isSalaryDeductionPaymentType,
+  workLocationAllowsSalaryDeduction,
+} from '../../helpers/subscriptionPricing.helper';
 
 const MEMBER_STATUSES = [
   { label: 'New member', value: 'new' },
@@ -24,16 +24,6 @@ const MEMBER_STATUSES = [
   { label: 'Rejoining (Previous Member)', value: 'rejoin' },
   { label: 'Returning from career break', value: 'careerBreak' },
   { label: 'Returning from nursing abroad', value: 'nursingAbroad' },
-];
-
-const YOUTH_FORUMS = ['Dublin', 'Cork', 'Galway', 'Other'];
-const SECTIONS = [
-  'Emergency',
-  'ICU',
-  'Maternity',
-  'Theatre',
-  'Community',
-  'Other',
 ];
 
 type Props = {
@@ -44,33 +34,136 @@ type Props = {
   workLocation?: string;
 };
 
-/** Same section structure as Portal_App SubscriptionDetails */
 const SubscriptionDetails = ({
   formData,
   onFormDataChange,
   showValidation,
+  dateOfBirth,
   workLocation,
 }: Props) => {
+  const {
+    paymentTypeOptions,
+    youthForumOptions,
+    primarySectionOptions,
+    secondarySectionOptions,
+    workLocationLookups,
+  } = useLookup();
+
   const set = (key: string, value: any) =>
     onFormDataChange({ ...formData, [key]: value });
 
   const err = (key: string, required = true) =>
     Boolean(showValidation && required && !formData?.[key]);
 
-  const isPayroll =
-    formData?.paymentType === 'Payroll Deduction' ||
-    formData?.paymentType === 'Deduction at Source';
+  const memberAge = calculateAgeFromDateOfBirth(dateOfBirth);
+  const showYouthForum = memberAge == null || memberAge < 35;
+
+  const allowSalaryDeduction = workLocationAllowsSalaryDeduction(
+    workLocation,
+    workLocationLookups,
+  );
+
+  const paymentTypes = useMemo(() => {
+    const base = paymentTypeOptions.length
+      ? paymentTypeOptions
+      : [
+          'Credit Card',
+          'Payroll Deduction',
+          'Deduction at Source',
+          'Direct Debit',
+        ].map(v => ({ label: v, value: v }));
+
+    if (allowSalaryDeduction) return base;
+    return base.filter(o => !isSalaryDeductionPaymentType(o.label || o.value));
+  }, [paymentTypeOptions, allowSalaryDeduction]);
+
+  // Clear invalid salary deduction payment when work location disallows it
+  useEffect(() => {
+    if (!formData?.paymentType) return;
+    if (
+      !allowSalaryDeduction &&
+      isSalaryDeductionPaymentType(formData.paymentType)
+    ) {
+      onFormDataChange({
+        ...formData,
+        paymentType: '',
+        payrollNo: '',
+        paymentFrequency: '',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowSalaryDeduction, workLocation]);
+
+  const frequencyOptions = useMemo(
+    () => getFrequencyOptionsForPaymentType(formData?.paymentType),
+    [formData?.paymentType],
+  );
+
+  const handlePaymentTypeChange = (v: string) => {
+    const defaultFreq = getDefaultFrequencyForPaymentType(v);
+    onFormDataChange({
+      ...formData,
+      paymentType: v,
+      paymentFrequency: defaultFreq || formData?.paymentFrequency || '',
+      payrollNo: isSalaryDeductionPaymentType(v) ? formData?.payrollNo : '',
+    });
+  };
+
+  const youthForums = useMemo(
+    () =>
+      youthForumOptions.length
+        ? youthForumOptions
+        : ['Dublin', 'Cork', 'Galway', 'Other'].map(v => ({
+            label: v,
+            value: v,
+          })),
+    [youthForumOptions],
+  );
+
+  const primarySections = useMemo(
+    () =>
+      primarySectionOptions.length
+        ? primarySectionOptions
+        : ['Emergency', 'ICU', 'Maternity', 'Other'].map(v => ({
+            label: v,
+            value: v,
+          })),
+    [primarySectionOptions],
+  );
+
+  const secondarySections = useMemo(
+    () =>
+      secondarySectionOptions.length
+        ? [...secondarySectionOptions, { label: 'Other', value: 'other' }]
+        : [...primarySections, { label: 'Other', value: 'other' }],
+    [secondarySectionOptions, primarySections],
+  );
+
+  const isPayroll = isSalaryDeductionPaymentType(formData?.paymentType);
 
   const isRejoin =
     formData?.memberStatus === 'rejoin' ||
     formData?.memberStatus === 'careerBreak';
 
+  const primaryIsOther = String(formData?.primarySection || '')
+    .toLowerCase()
+    .includes('other');
+
+  const secondaryIsOther =
+    formData?.secondarySection === 'other' ||
+    String(formData?.secondarySection || '')
+      .toLowerCase()
+      .includes('other');
+
   return (
     <View>
       <FormCard title="Your Subscription Fees">
         <Text style={styles.feeNote}>
-          Fees are confirmed from membership category after professional details
-          are saved. Work location: {workLocation || '—'}.
+          Fees follow membership category from professional details. Work
+          location: {workLocation || '—'}.
+          {!allowSalaryDeduction
+            ? ' Salary deduction payment types are unavailable for this location.'
+            : ''}
         </Text>
       </FormCard>
 
@@ -79,10 +172,27 @@ const SubscriptionDetails = ({
         <SelectField
           value={formData?.paymentType || ''}
           placeholder="Select payment type"
-          options={PAYMENT_TYPES}
-          onSelect={v => set('paymentType', v)}
+          options={paymentTypes}
+          onSelect={handlePaymentTypeChange}
           error={err('paymentType')}
         />
+
+        {frequencyOptions.length > 0 && (
+          <>
+            <FieldLabel
+              label="Payment frequency"
+              required
+              error={err('paymentFrequency')}
+            />
+            <SelectField
+              value={formData?.paymentFrequency || ''}
+              placeholder="Select frequency"
+              options={frequencyOptions}
+              onSelect={v => set('paymentFrequency', v)}
+              error={err('paymentFrequency')}
+            />
+          </>
+        )}
 
         {isPayroll && (
           <>
@@ -102,7 +212,12 @@ const SubscriptionDetails = ({
           required
           error={err('memberStatus')}
         />
-        <View style={showValidation && !formData?.memberStatus ? styles.errorBox : undefined}>
+        <View
+          style={
+            showValidation && !formData?.memberStatus
+              ? styles.errorBox
+              : undefined
+          }>
           {MEMBER_STATUSES.map(status => {
             const selected = formData?.memberStatus === status.value;
             return (
@@ -235,34 +350,40 @@ const SubscriptionDetails = ({
           </FormCard>
         )}
 
-      <FormCard title="Youth Forum">
-        <FieldLabel
-          label="Would you like to join Youth Forum?"
-          required
-          error={err('joinYouthForum')}
-        />
-        <RadioRow
-          value={formData?.joinYouthForum || ''}
-          options={[
-            { label: 'Yes', value: 'yes' },
-            { label: 'No', value: 'no' },
-          ]}
-          onChange={v => set('joinYouthForum', v)}
-          error={err('joinYouthForum')}
-        />
-        {formData?.joinYouthForum === 'yes' && (
-          <>
-            <FieldLabel label="Youth Forum" required error={err('youthForum')} />
-            <SelectField
-              value={formData?.youthForum || ''}
-              placeholder="Select Youth Forum"
-              options={YOUTH_FORUMS}
-              onSelect={v => set('youthForum', v)}
-              error={err('youthForum')}
-            />
-          </>
-        )}
-      </FormCard>
+      {showYouthForum && (
+        <FormCard title="Youth Forum">
+          <FieldLabel
+            label="Would you like to join Youth Forum?"
+            required
+            error={err('joinYouthForum')}
+          />
+          <RadioRow
+            value={formData?.joinYouthForum || ''}
+            options={[
+              { label: 'Yes', value: 'yes' },
+              { label: 'No', value: 'no' },
+            ]}
+            onChange={v => set('joinYouthForum', v)}
+            error={err('joinYouthForum')}
+          />
+          {formData?.joinYouthForum === 'yes' && (
+            <>
+              <FieldLabel
+                label="Youth Forum"
+                required
+                error={err('youthForum')}
+              />
+              <SelectField
+                value={formData?.youthForum || ''}
+                placeholder="Select Youth Forum"
+                options={youthForums}
+                onSelect={v => set('youthForum', v)}
+                error={err('youthForum')}
+              />
+            </>
+          )}
+        </FormCard>
+      )}
 
       <FormCard title="Recruitment Details">
         <FieldLabel label="Recruited by (name)" />
@@ -278,15 +399,19 @@ const SubscriptionDetails = ({
       </FormCard>
 
       <FormCard title="Section Details">
-        <FieldLabel label="Primary section" required error={err('primarySection')} />
+        <FieldLabel
+          label="Primary section"
+          required
+          error={err('primarySection')}
+        />
         <SelectField
           value={formData?.primarySection || ''}
           placeholder="Select primary section"
-          options={SECTIONS}
+          options={primarySections}
           onSelect={v => set('primarySection', v)}
           error={err('primarySection')}
         />
-        {formData?.primarySection === 'Other' && (
+        {primaryIsOther && (
           <>
             <FieldLabel
               label="Other primary section"
@@ -305,9 +430,27 @@ const SubscriptionDetails = ({
         <SelectField
           value={formData?.secondarySection || ''}
           placeholder="Select secondary section"
-          options={SECTIONS}
-          onSelect={v => set('secondarySection', v)}
+          options={secondarySections}
+          onSelect={v =>
+            onFormDataChange({
+              ...formData,
+              secondarySection: v,
+              otherSecondarySection:
+                v === 'other' || String(v).toLowerCase().includes('other')
+                  ? formData?.otherSecondarySection
+                  : '',
+            })
+          }
         />
+        {secondaryIsOther && (
+          <>
+            <FieldLabel label="Other secondary section" />
+            <TextField
+              value={formData?.otherSecondarySection || ''}
+              onChangeText={t => set('otherSecondarySection', t)}
+            />
+          </>
+        )}
       </FormCard>
 
       <FormCard title="Additional Services & Terms">

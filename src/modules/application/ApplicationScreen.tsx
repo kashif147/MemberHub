@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Tag } from 'lucide-react-native';
@@ -16,6 +17,32 @@ import { Colors } from '../../theme/colors';
 import PersonalInformation from './PersonalInformation';
 import ProfessionalDetails from './ProfessionalDetails';
 import SubscriptionDetails from './SubscriptionDetails';
+import { useLookup } from '../../contexts/lookupContext';
+import {
+  createPersonalDetailRequest,
+  createProfessionalDetailRequest,
+  createSubscriptionDetailRequest,
+  updatePersonalDetailRequest,
+  updateProfessionalDetailRequest,
+  updateSubscriptionDetailRequest,
+} from '../../api/application.api';
+import {
+  buildPersonalPayload,
+  buildProfessionalPayload,
+  buildSubscriptionPayload,
+  extractApiError,
+  extractApplicationId,
+} from '../../helpers/applicationPayload.helper';
+import {
+  isRetiredAssociateCategory,
+  isUndergraduateStudentCategory,
+} from '../../helpers/applicationCategory.helper';
+import { calculateAgeFromDateOfBirth } from '../../helpers/date.helper';
+import { isValidMobileE164 } from '../../helpers/phone.helper';
+import {
+  getFrequencyOptionsForPaymentType,
+  isSalaryDeductionPaymentType,
+} from '../../helpers/subscriptionPricing.helper';
 
 const steps = [
   { number: 1, title: 'Personal' },
@@ -66,14 +93,14 @@ const initialFormData = {
 };
 
 /**
- * Branch Officer application — mockup structure:
- * underline stepper (1 · Personal | 2 · Professional | 3 · Subscription),
- * drive tag, then Portal-equivalent step forms.
+ * Branch Officer bulk register — Portal 3-step UX + CRM profile-service saves.
+ * Lookups from policy-service (same as CRM ApplicationMgtDrawer).
  */
 const ApplicationScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const scrollRef = useRef<any>(null);
+  const { refreshLookups, loading: lookupsLoading } = useLookup();
 
   const driveName =
     route.params?.driveName || 'Beaumont ED – Autumn drive';
@@ -83,6 +110,11 @@ const ApplicationScreen = () => {
   const [showValidation, setShowValidation] = useState(false);
   const [stepLoading, setStepLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [applicationId, setApplicationId] = useState<string | null>(
+    route.params?.applicationId || null,
+  );
+  const [hasProfessional, setHasProfessional] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState(false);
 
   const handleFormDataChange = (
     stepName: keyof typeof initialFormData,
@@ -97,12 +129,17 @@ const ApplicationScreen = () => {
     }));
   };
 
-  const isUndergraduateStudent = useMemo(() => {
-    const cat = String(
-      formData.professionalDetails?.membershipCategory || '',
-    ).toLowerCase();
-    return cat.includes('undergraduate') || cat.includes('student');
-  }, [formData.professionalDetails?.membershipCategory]);
+  const categoryLabel = formData.professionalDetails?.membershipCategory || '';
+
+  const isUndergraduateStudent = useMemo(
+    () => isUndergraduateStudentCategory(categoryLabel),
+    [categoryLabel],
+  );
+
+  const memberAge = useMemo(
+    () => calculateAgeFromDateOfBirth(formData.personalInfo?.dob),
+    [formData.personalInfo?.dob],
+  );
 
   const getMissingRequiredFields = () => {
     const missing: string[] = [];
@@ -124,6 +161,12 @@ const ApplicationScreen = () => {
         missing.push('Work email');
       }
       if (!p.mobileNo) missing.push('Mobile number');
+      else if (!isValidMobileE164(p.mobileNo)) {
+        missing.push('Valid mobile number');
+      }
+      if (memberAge != null && memberAge < 16) {
+        missing.push('Date of Birth (must be 16+)');
+      }
       if (!p.addressLine1) missing.push('Address Line 1');
       if (!p.addressLine4) missing.push('Address Line 4');
       if (!p.preferredAddress) missing.push('Preferred address');
@@ -131,8 +174,12 @@ const ApplicationScreen = () => {
       const d = formData.professionalDetails || {};
       if (!d.membershipCategory) missing.push('Membership category');
       if (!d.grade) missing.push('Grade');
+      if (d.grade === 'other' && !d.otherGrade) missing.push('Other grade');
       if (!isUndergraduateStudent && !d.workLocation) {
         missing.push('Work location');
+      }
+      if (d.workLocation === 'other' && !d.otherWorkLocation) {
+        missing.push('Other work location');
       }
       if (isUndergraduateStudent) {
         if (!d.discipline) missing.push('Discipline');
@@ -140,10 +187,10 @@ const ApplicationScreen = () => {
         if (!d.startDate) missing.push('Start date');
         if (!d.graduationDate) missing.push('Graduation date');
       }
-      const retired = String(d.membershipCategory || '')
-        .toLowerCase()
-        .includes('retired');
-      if (retired && !String(d.pensionNo || '').trim()) {
+      if (
+        isRetiredAssociateCategory(categoryLabel) &&
+        !String(d.pensionNo || '').trim()
+      ) {
         missing.push('Pension number');
       }
       if (d.nursingAdaptationProgramme === 'yes' && !d.nurseType) {
@@ -159,11 +206,11 @@ const ApplicationScreen = () => {
     } else if (currentStep === 3) {
       const s = formData.subscriptionDetails || {};
       if (!s.paymentType) missing.push('Payment type');
-      if (
-        (s.paymentType === 'Payroll Deduction' ||
-          s.paymentType === 'Deduction at Source') &&
-        !s.payrollNo
-      ) {
+      const freqOptions = getFrequencyOptionsForPaymentType(s.paymentType);
+      if (freqOptions.length > 0 && !s.paymentFrequency) {
+        missing.push('Payment frequency');
+      }
+      if (isSalaryDeductionPaymentType(s.paymentType) && !s.payrollNo) {
         missing.push('Payroll number');
       }
       if (!s.memberStatus) missing.push('Member status');
@@ -185,12 +232,19 @@ const ApplicationScreen = () => {
       ) {
         missing.push('Other scheme');
       }
-      if (!s.joinYouthForum) missing.push('Youth Forum preference');
-      if (s.joinYouthForum === 'yes' && !s.youthForum) {
-        missing.push('Youth Forum');
+      if (memberAge == null || memberAge < 35) {
+        if (!s.joinYouthForum) missing.push('Youth Forum preference');
+        if (s.joinYouthForum === 'yes' && !s.youthForum) {
+          missing.push('Youth Forum');
+        }
       }
       if (!s.primarySection) missing.push('Primary section');
-      if (s.primarySection === 'Other' && !s.otherPrimarySection) {
+      if (
+        String(s.primarySection || '')
+          .toLowerCase()
+          .includes('other') &&
+        !s.otherPrimarySection
+      ) {
         missing.push('Other primary section');
       }
       if (!s.termsAndConditions) missing.push('Terms & Conditions');
@@ -198,7 +252,136 @@ const ApplicationScreen = () => {
     return missing;
   };
 
-  const validateCurrentStep = () => getMissingRequiredFields().length === 0;
+  const advanceStep = () => {
+    setShowValidation(false);
+    setCurrentStep(prev => Math.min(prev + 1, steps.length));
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const finishBulkRegister = () => {
+    setIsSubmitted(true);
+    const name =
+      `${formData.personalInfo.forename} ${formData.personalInfo.surname}`.trim();
+    Alert.alert(
+      'Application submitted',
+      `${name || 'Application'} tagged to “${driveName}” and pending review.`,
+      [
+        {
+          text: 'Register another',
+          onPress: () => {
+            setFormData(initialFormData);
+            setApplicationId(null);
+            setHasProfessional(false);
+            setHasSubscription(false);
+            setIsSubmitted(false);
+            setShowValidation(false);
+            setCurrentStep(1);
+            scrollRef.current?.scrollTo({ y: 0, animated: true });
+          },
+        },
+        {
+          text: 'Done',
+          style: 'cancel',
+          onPress: () => navigation.popToTop(),
+        },
+      ],
+    );
+  };
+
+  const savePersonalStep = async () => {
+    const payload = buildPersonalPayload(formData.personalInfo);
+    setStepLoading(true);
+    try {
+      const res = applicationId
+        ? await updatePersonalDetailRequest(applicationId, payload)
+        : await createPersonalDetailRequest(payload);
+
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        throw new Error(
+          extractApiError(res, 'Unable to save personal details'),
+        );
+      }
+
+      const id = extractApplicationId(res) || applicationId;
+      if (id) setApplicationId(id);
+      advanceStep();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Unable to save personal details');
+    } finally {
+      setStepLoading(false);
+    }
+  };
+
+  const saveProfessionalStep = async () => {
+    if (!applicationId) {
+      Alert.alert('Error', 'Missing application id. Re-save personal details.');
+      return;
+    }
+    const payload = buildProfessionalPayload(formData.professionalDetails);
+    setStepLoading(true);
+    try {
+      let res = hasProfessional
+        ? await updateProfessionalDetailRequest(applicationId, payload)
+        : await createProfessionalDetailRequest(applicationId, payload);
+
+      // CRM ApplicationMgtDrawer: PUT then fallback POST (or reverse)
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        res = hasProfessional
+          ? await createProfessionalDetailRequest(applicationId, payload)
+          : await updateProfessionalDetailRequest(applicationId, payload);
+      }
+
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        throw new Error(
+          extractApiError(res, 'Unable to save professional details'),
+        );
+      }
+
+      setHasProfessional(true);
+      advanceStep();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Unable to save professional details');
+    } finally {
+      setStepLoading(false);
+    }
+  };
+
+  const saveSubscriptionStep = async () => {
+    if (!applicationId) {
+      Alert.alert('Error', 'Missing application id. Re-save personal details.');
+      return;
+    }
+    const payload = buildSubscriptionPayload(
+      formData.subscriptionDetails,
+      formData.professionalDetails?.membershipCategory,
+    );
+    setStepLoading(true);
+    try {
+      let res = hasSubscription
+        ? await updateSubscriptionDetailRequest(applicationId, payload)
+        : await createSubscriptionDetailRequest(applicationId, payload);
+
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        res = hasSubscription
+          ? await createSubscriptionDetailRequest(applicationId, payload)
+          : await updateSubscriptionDetailRequest(applicationId, payload);
+      }
+
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        throw new Error(
+          extractApiError(res, 'Unable to save subscription details'),
+        );
+      }
+
+      setHasSubscription(true);
+      // Branch Officer / CRM bulk: no member payment modal
+      finishBulkRegister();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Unable to save subscription details');
+    } finally {
+      setStepLoading(false);
+    }
+  };
 
   const handlePrevious = () => {
     setShowValidation(false);
@@ -219,31 +402,15 @@ const ApplicationScreen = () => {
       return;
     }
 
-    setShowValidation(false);
-    setStepLoading(true);
-
-    // Portal advances after API success; Branch Officer demo advances locally.
-    setTimeout(() => {
-      setStepLoading(false);
-      if (currentStep < steps.length) {
-        setCurrentStep(prev => prev + 1);
-        scrollRef.current?.scrollTo({ y: 0, animated: true });
-        return;
-      }
-
-      setIsSubmitted(true);
-      const name = `${formData.personalInfo.forename} ${formData.personalInfo.surname}`.trim();
-      Alert.alert(
-        'Application submitted',
-        `${name || 'Application'} tagged to “${driveName}” and pending review.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.popToTop(),
-          },
-        ],
-      );
-    }, 350);
+    if (currentStep === 1) {
+      savePersonalStep();
+      return;
+    }
+    if (currentStep === 2) {
+      saveProfessionalStep();
+      return;
+    }
+    saveSubscriptionStep();
   };
 
   const handleStepClick = (stepNumber: number) => {
@@ -314,7 +481,6 @@ const ApplicationScreen = () => {
         }}
       />
 
-      {/* Mockup underline stepper: 1 · Personal | 2 · Professional | 3 · Subscription */}
       <View style={styles.stepperRow}>
         {steps.map(step => {
           const isCurrent = currentStep === step.number;
@@ -349,6 +515,11 @@ const ApplicationScreen = () => {
         <Text style={styles.driveTagText} numberOfLines={1}>
           {driveName}
         </Text>
+        {lookupsLoading ? (
+          <TouchableOpacity onPress={() => refreshLookups()}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <KeyboardAvoidingView
@@ -379,11 +550,15 @@ const ApplicationScreen = () => {
               onPress={handleNext}
               activeOpacity={0.85}
               disabled={stepLoading}>
-              <Text style={styles.primaryBtnText}>
-                {currentStep === steps.length
-                  ? 'Submit Application'
-                  : steps[currentStep]?.title || 'Next Step'}
-              </Text>
+              {stepLoading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.primaryBtnText}>
+                  {currentStep === steps.length
+                    ? 'Submit Application'
+                    : steps[currentStep]?.title || 'Next Step'}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -453,7 +628,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: Colors.primary,
+    minHeight: 48,
   },
   primaryBtnText: {
     fontSize: 15,

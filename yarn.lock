@@ -1542,6 +1542,13 @@
     prompts "^2.4.2"
     semver "^7.5.2"
 
+"@react-native-community/datetimepicker@^9.2.1":
+  version "9.2.1"
+  resolved "https://registry.yarnpkg.com/@react-native-community/datetimepicker/-/datetimepicker-9.2.1.tgz#eeeb3ae522d18345e4472be85a94f3c0689bf2dd"
+  integrity sha512-P2dir8EcPYuS6g7N/E4jImugB99h2+e1kzNX6Ihg+2T2v5IZ5dB+4afLisG6rdua4YZ1mADYCZ2iqI34sPjIKA==
+  dependencies:
+    invariant "^2.2.4"
+
 "@react-native/asset-utils@0.87.1":
   version "0.87.1"
   resolved "https://registry.yarnpkg.com/@react-native/asset-utils/-/asset-utils-0.87.1.tgz#b8a129103bf270b74964ba3b21abcb791385ff06"
@@ -3710,6 +3717,11 @@ functions-have-names@^1.2.3:
   resolved "https://registry.yarnpkg.com/functions-have-names/-/functions-have-names-1.2.3.tgz#0404fe4ee2ba2f607f0e0ec3c80bae994133b834"
   integrity sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==
 
+fuse.js@^7.5.0:
+  version "7.5.0"
+  resolved "https://registry.yarnpkg.com/fuse.js/-/fuse.js-7.5.0.tgz#c591b7bddad0135b9d28d190daa9415dd754c4c7"
+  integrity sha512-sQtrEfA+ez/3G0cCZecF70oqpCRttCexYUG4mUrtWL49ULUzUyxokt5kyqwtKzj1270RaKih+hcP3qLcumccow==
+
 generator-function@^2.0.0:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/generator-function/-/generator-function-2.0.1.tgz#0e75dd410d1243687a0ba2e951b94eedb8f737a2"
@@ -5683,6 +5695,13 @@ react-is@^19.1.0, react-is@^19.2.3:
   resolved "https://registry.yarnpkg.com/react-is/-/react-is-19.3.0.tgz#716028d67e9993d23a2d353c6d08a3c1ef2bbeb4"
   integrity sha512-UpMYezM4v5/18F28aC66AEsjXIgE02kyEMH6yLdgLXu/UTfa1Ntwck/nNLrbqJsEXW7gPb0coNO9FQse9WTovA==
 
+react-native-country-picker-modal@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/react-native-country-picker-modal/-/react-native-country-picker-modal-3.0.0.tgz#8d22d63efa483b91dc14921004aaf4604e65a4ed"
+  integrity sha512-Sj7/noBDsJikqpSoxnwFekFsuyo9SFNkN44ifNK7ytBZja2zqw4wBHjeQjDD5L7Q8jr0CXpNbVcyE39fV9HChg==
+  dependencies:
+    fuse.js "^7.5.0"
+
 react-native-gesture-handler@^3.3.0:
   version "3.3.0"
   resolved "https://registry.yarnpkg.com/react-native-gesture-handler/-/react-native-gesture-handler-3.3.0.tgz#58817e551bab57e514fb6784003222d7d7f5738f"
@@ -5697,6 +5716,11 @@ react-native-get-random-values@^2.0.0:
   integrity sha512-wx7/aPqsUIiWsG35D+MsUJd8ij96e3JKddklSdrdZUrheTx89gPtz3Q2yl9knBArj5u26Cl23T88ai+Q0vypdQ==
   dependencies:
     fast-base64-decode "^1.0.0"
+
+react-native-google-places-autocomplete@^2.6.5:
+  version "2.6.5"
+  resolved "https://registry.yarnpkg.com/react-native-google-places-autocomplete/-/react-native-google-places-autocomplete-2.6.5.tgz#123063354b85928f4c4132ee3382c72ebb37e3c2"
+  integrity sha512-X/CmqREA2U0Be2JfneDlfDWjMOuES6bRsI+v7jeNRDp91IeSNJQmlKXAwcpDcRXZl2/pQk/xfs1gyut/aijkJA==
 
 react-native-safe-area-context@^5.10.1:
   version "5.10.1"

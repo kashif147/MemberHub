@@ -48,6 +48,8 @@ export const TextField = ({
   placeholder,
   error,
   rightIcon,
+  containerStyle,
+  style,
   ...rest
 }: {
   value: string;
@@ -55,11 +57,13 @@ export const TextField = ({
   placeholder?: string;
   error?: boolean;
   rightIcon?: React.ReactNode;
+  containerStyle?: any;
+  style?: any;
   [key: string]: any;
 }) => (
-  <View style={[styles.inputWrap, error && styles.inputError]}>
+  <View style={[styles.inputWrap, error && styles.inputError, containerStyle]}>
     <TextInput
-      style={styles.input}
+      style={[styles.input, style]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -79,11 +83,18 @@ export const SelectField = ({
 }: {
   value: string;
   placeholder: string;
-  options: string[];
+  options: Array<string | { label: string; value: string }>;
   onSelect: (v: string) => void;
   error?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
+  const normalized = (options || []).map(opt =>
+    typeof opt === 'string' ? { label: opt, value: opt } : opt,
+  );
+  const selectedLabel =
+    normalized.find(o => o.value === value || o.label === value)?.label ||
+    value;
+
   return (
     <View>
       <TouchableOpacity
@@ -93,26 +104,27 @@ export const SelectField = ({
         <Text
           style={[styles.selectText, !value && styles.placeholder]}
           numberOfLines={1}>
-          {value || placeholder}
+          {selectedLabel || placeholder}
         </Text>
         <ChevronDown size={16} color={Colors.textMuted} />
       </TouchableOpacity>
       {open && (
         <View style={styles.menu}>
-          {options.map(opt => (
+          {normalized.map(opt => (
             <TouchableOpacity
-              key={opt}
+              key={`${opt.value}-${opt.label}`}
               style={styles.menuItem}
               onPress={() => {
-                onSelect(opt);
+                onSelect(opt.value);
                 setOpen(false);
               }}>
               <Text
                 style={[
                   styles.menuItemText,
-                  opt === value && styles.menuItemActive,
+                  (opt.value === value || opt.label === value) &&
+                    styles.menuItemActive,
                 ]}>
-                {opt}
+                {opt.label}
               </Text>
             </TouchableOpacity>
           ))}
