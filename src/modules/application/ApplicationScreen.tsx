@@ -210,8 +210,11 @@ const ApplicationScreen = () => {
       if (freqOptions.length > 0 && !s.paymentFrequency) {
         missing.push('Payment frequency');
       }
-      if (isSalaryDeductionPaymentType(s.paymentType) && !s.payrollNo) {
-        missing.push('Payroll number');
+      if (
+        isSalaryDeductionPaymentType(s.paymentType) &&
+        !String(s.payrollNo || '').trim()
+      ) {
+        missing.push('Payroll No');
       }
       if (!s.memberStatus) missing.push('Member status');
       if (

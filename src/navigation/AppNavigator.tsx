@@ -1,12 +1,25 @@
 import React, { useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import TabNavigation from './TabNavigation';
 import SplashScreen from '../modules/splash/SplashScreen';
 import LandingPage from '../modules/landing/LandingPage';
 import { validation } from '../services/auth.services';
 import { useLookup } from '../contexts/lookupContext';
+import { Colors } from '../theme/colors';
 import type { AppDispatch, RootState } from '../store';
+
+const AppTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: Colors.background,
+    card: Colors.surface,
+    border: Colors.border,
+    primary: Colors.primary,
+    text: Colors.textPrimary,
+  },
+};
 
 const MIN_SPLASH_MS = 1800;
 
@@ -43,7 +56,7 @@ const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={AppTheme}>
       <TabNavigation />
     </NavigationContainer>
   );

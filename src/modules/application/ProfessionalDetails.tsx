@@ -54,6 +54,8 @@ const ProfessionalDetails = ({
   const categoryLabel = formData?.membershipCategory || '';
   const student = isUndergraduateStudentCategory(categoryLabel);
   const retired = isRetiredAssociateCategory(categoryLabel);
+  const adaptationYes = formData?.nursingAdaptationProgramme === 'yes';
+  const adaptationNo = formData?.nursingAdaptationProgramme === 'no';
 
   const err = (key: string, required = true) =>
     Boolean(showValidation && required && !formData?.[key]);
@@ -457,46 +459,60 @@ const ProfessionalDetails = ({
       </FormCard>
 
       <FormCard title="Professional Credentials">
-        <FieldLabel label="Nursing adaptation programme?" />
+        <FieldLabel label="Are you currently undertaking a nursing adaptation programme?" />
         <RadioRow
           value={formData?.nursingAdaptationProgramme || ''}
           options={[
             { label: 'Yes', value: 'yes' },
             { label: 'No', value: 'no' },
           ]}
-          onChange={v =>
-            onFormDataChange({
+          onChange={v => {
+            const next: Record<string, any> = {
               ...formData,
               nursingAdaptationProgramme: v,
-              nurseType: v === 'yes' ? formData?.nurseType : '',
-              nmbiNo: v === 'no' ? formData?.nmbiNo : '',
-            })
-          }
+            };
+            // Portal: clear nurse type when switching to No
+            if (v === 'no') {
+              next.nurseType = '';
+            }
+            onFormDataChange(next);
+          }}
         />
 
-        {formData?.nursingAdaptationProgramme === 'yes' && (
-          <>
-            <FieldLabel label="Nurse type" required error={err('nurseType')} />
-            <SelectField
-              value={formData?.nurseType || ''}
-              placeholder="Select nurse type"
-              options={NURSE_TYPES}
-              onSelect={v => set('nurseType', v)}
-              error={err('nurseType')}
-            />
-          </>
-        )}
+        {/* Portal: NMBI always visible; editable once Yes/No chosen */}
+        <FieldLabel
+          label="NMBI No / An Board Altranais Number"
+          required={adaptationNo && !student}
+          error={adaptationNo && !student && err('nmbiNo')}
+        />
+        <TextField
+          value={formData?.nmbiNo || formData?.nmbiNumber || ''}
+          onChangeText={t =>
+            onFormDataChange({
+              ...formData,
+              nmbiNo: t,
+              nmbiNumber: t,
+            })
+          }
+          placeholder="12344"
+          editable={adaptationYes || adaptationNo}
+          error={adaptationNo && !student && err('nmbiNo')}
+        />
 
-        {formData?.nursingAdaptationProgramme === 'no' && !student && (
-          <>
-            <FieldLabel label="NMBI number" required error={err('nmbiNo')} />
-            <TextField
-              value={formData?.nmbiNo || ''}
-              onChangeText={t => set('nmbiNo', t)}
-              error={err('nmbiNo')}
-            />
-          </>
-        )}
+        {/* Portal: nurse types always visible; enabled only when Yes */}
+        <FieldLabel
+          label="Please tick one of the following"
+          required={adaptationYes}
+          error={adaptationYes && err('nurseType')}
+        />
+        <RadioRow
+          value={formData?.nurseType || ''}
+          options={NURSE_TYPES}
+          onChange={v => set('nurseType', v)}
+          error={adaptationYes && err('nurseType')}
+          wrap
+          disabled={!adaptationYes}
+        />
       </FormCard>
     </View>
   );

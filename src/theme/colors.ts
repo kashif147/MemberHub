@@ -4,9 +4,10 @@ export const Colors = {
   primaryMuted: '#9B93E0',
   accent: '#7C71D8',
 
-  background: '#F0F1F8',
+  /** Figma app canvas — cool off-white behind white cards */
+  background: '#F8F9FB',
   surface: '#FFFFFF',
-  surfaceMuted: '#F6F7FB',
+  surfaceMuted: '#F3F4F8',
 
   textPrimary: '#1A1A2E',
   textSecondary: '#6B6F8A',
@@ -24,11 +25,11 @@ export const Colors = {
   statusOpen: '#5B4FCF',
   statusOpenBg: '#FFFFFF',
   statusClosed: '#6B6F8A',
-  statusClosedBg: '#F0F1F8',
+  statusClosedBg: '#F3F4F8',
   statusLapsed: '#5B4FCF',
   statusLapsedBg: '#FFFFFF',
   statusResigned: '#6B6F8A',
-  statusResignedBg: '#F0F1F8',
+  statusResignedBg: '#F3F4F8',
 
   liveBadge: '#EEF0FF',
   liveBadgeText: '#5B4FCF',

@@ -11,15 +11,41 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
+import { Search, SlidersHorizontal } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
 import type { Member } from '../data/mockMembers';
 import { STACKS } from '../enums/ScreenEnums';
 import { fetchMembersForUser } from '../services/members.services';
 import { refreshMeProfile } from '../services/auth.services';
+import MembersFiltersSheet, {
+  EMPTY_ADVANCED_FILTERS,
+  type MembersAdvancedFilters,
+} from '../modules/members/MembersFiltersSheet';
 import type { AppDispatch, RootState } from '../store';
 
-const FILTER_TABS = ['Active', 'In arrears', 'Lapsed'];
+const FILTER_TABS = ['Active', 'In arrears', 'Lapsed'] as const;
+
+const uniqueSorted = (values: Array<string | null | undefined>) =>
+  [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+
+const matchesAdvanced = (m: Member, f: MembersAdvancedFilters) => {
+  if (f.status !== 'Any' && m.status !== f.status) return false;
+  if (f.payment !== 'Any' && (m.paymentMethod || '') !== f.payment) return false;
+  if (f.grade !== 'Any' && (m.grade || m.role || '') !== f.grade) return false;
+  if (f.workLocation !== 'Any' && (m.branch || '') !== f.workLocation) {
+    return false;
+  }
+  if (f.branch !== 'Any' && (m.branch || '') !== f.branch) return false;
+  // Region not on Member row yet — keep filter UI; no-op until API returns it
+  if (f.region !== 'Any') {
+    const region = (m as any).region || '';
+    if (region && region !== f.region) return false;
+  }
+  return true;
+};
 
 const AvatarBadge = ({ initials }: { initials: string }) => (
   <View style={styles.avatar}>
@@ -28,7 +54,7 @@ const AvatarBadge = ({ initials }: { initials: string }) => (
 );
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const getStyle = () => {
+  const s = (() => {
     switch (status) {
       case 'Active':
         return {
@@ -37,7 +63,11 @@ const StatusBadge = ({ status }: { status: string }) => {
           bordered: false,
         };
       case 'Lapsed':
-        return { bg: Colors.surface, text: Colors.primary, bordered: true };
+        return {
+          bg: Colors.surface,
+          text: Colors.primary,
+          bordered: true,
+        };
       case 'Resigned':
         return {
           bg: Colors.statusClosedBg,
@@ -51,8 +81,8 @@ const StatusBadge = ({ status }: { status: string }) => {
           bordered: false,
         };
     }
-  };
-  const s = getStyle();
+  })();
+
   return (
     <View
       style={[
@@ -60,7 +90,7 @@ const StatusBadge = ({ status }: { status: string }) => {
         {
           backgroundColor: s.bg,
           borderWidth: s.bordered ? 1 : 0,
-          borderColor: Colors.border,
+          borderColor: Colors.primary,
         },
       ]}>
       <Text style={[styles.statusBadgeText, { color: s.text }]}>{status}</Text>
@@ -76,13 +106,15 @@ const MemberItem = ({
   onPress: () => void;
 }) => (
   <TouchableOpacity
-    style={styles.memberItem}
-    activeOpacity={0.7}
+    style={styles.memberCard}
+    activeOpacity={0.75}
     onPress={onPress}>
     <AvatarBadge initials={item.initials} />
     <View style={styles.memberInfo}>
-      <Text style={styles.memberName}>{item.name}</Text>
-      <Text style={styles.memberMeta}>
+      <Text style={styles.memberName} numberOfLines={1}>
+        {item.name}
+      </Text>
+      <Text style={styles.memberMeta} numberOfLines={2}>
         {item.memberNo} · {item.role} · {item.branch}
       </Text>
     </View>
@@ -99,6 +131,10 @@ const MembersScreen = () => {
   const user = useSelector((s: RootState) => s.auth.user);
   const [activeFilter, setActiveFilter] = useState<string | null>('Active');
   const [search, setSearch] = useState('');
+  const [advanced, setAdvanced] = useState<MembersAdvancedFilters>(
+    EMPTY_ADVANCED_FILTERS,
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [scopeLabel, setScopeLabel] = useState(
@@ -155,25 +191,53 @@ const MembersScreen = () => {
     loadMembers();
   }, [loadMembers]);
 
-  const filtered = useMemo(() => {
-    return members.filter(m => {
-      if (activeFilter === 'In arrears') {
-        if (!m.arrears) return false;
-      } else if (activeFilter && m.status !== activeFilter) {
-        return false;
-      }
-      if (search) {
-        const q = search.toLowerCase();
-        if (
-          !m.name.toLowerCase().includes(q) &&
-          !m.memberNo.toLowerCase().includes(q)
-        ) {
+  const applyClientFilters = useCallback(
+    (list: Member[], tab: string | null, q: string, adv: MembersAdvancedFilters) =>
+      list.filter(m => {
+        if (tab === 'In arrears') {
+          if (!m.arrears) return false;
+        } else if (tab && m.status !== tab) {
           return false;
         }
-      }
-      return true;
-    });
-  }, [members, activeFilter, search]);
+        if (q) {
+          const query = q.toLowerCase();
+          if (
+            !m.name.toLowerCase().includes(query) &&
+            !m.memberNo.toLowerCase().includes(query)
+          ) {
+            return false;
+          }
+        }
+        return matchesAdvanced(m, adv);
+      }),
+    [],
+  );
+
+  const filtered = useMemo(
+    () => applyClientFilters(members, activeFilter, search, advanced),
+    [members, activeFilter, search, advanced, applyClientFilters],
+  );
+
+  const filterOptions = useMemo(
+    () => ({
+      status: uniqueSorted(members.map(m => m.status)),
+      payment: uniqueSorted(members.map(m => m.paymentMethod)),
+      grade: uniqueSorted(members.map(m => m.grade || m.role)),
+      workLocation: uniqueSorted(members.map(m => m.branch)),
+      branch: uniqueSorted([
+        ...members.map(m => m.branch),
+        ...(user?.branchFilters || []),
+      ]),
+      region: uniqueSorted(user?.regionFilters || []),
+    }),
+    [members, user?.branchFilters, user?.regionFilters],
+  );
+
+  const previewCountFor = useCallback(
+    (draft: MembersAdvancedFilters) =>
+      applyClientFilters(members, activeFilter, search, draft).length,
+    [members, activeFilter, search, applyClientFilters],
+  );
 
   const role = user?.role || 'Branch Officer';
 
@@ -183,20 +247,28 @@ const MembersScreen = () => {
       <View style={styles.content}>
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Search size={18} color={Colors.textMuted} strokeWidth={2} />
             <TextInput
               style={styles.searchInput}
               placeholder="Name or membership no."
               placeholderTextColor={Colors.textPlaceholder}
               value={search}
               onChangeText={setSearch}
+              returnKeyType="search"
             />
           </View>
           <TouchableOpacity
-            style={styles.filterBtn}
+            style={[
+              styles.filterBtn,
+              filtersOpen && styles.filterBtnActive,
+            ]}
             activeOpacity={0.7}
-            onPress={() => loadMembers(true)}>
-            <Text style={styles.filterIcon}>⚙</Text>
+            onPress={() => setFiltersOpen(true)}>
+            <SlidersHorizontal
+              size={18}
+              color={Colors.primary}
+              strokeWidth={2.2}
+            />
           </TouchableOpacity>
         </View>
 
@@ -257,7 +329,6 @@ const MembersScreen = () => {
             )}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -266,11 +337,22 @@ const MembersScreen = () => {
               />
             }
             ListEmptyComponent={
-              <Text style={styles.emptyText}>No members match this filter.</Text>
+              <Text style={styles.emptyText}>
+                No members match this filter.
+              </Text>
             }
           />
         )}
       </View>
+
+      <MembersFiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        value={advanced}
+        onApply={setAdvanced}
+        getResultCount={previewCountFor}
+        options={filterOptions}
+      />
     </View>
   );
 };
@@ -282,42 +364,46 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   searchRow: {
     flexDirection: 'row',
     gap: 10,
     marginBottom: 12,
+    marginTop: 4,
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     backgroundColor: Colors.surface,
     borderRadius: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    height: 48,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  searchIcon: { fontSize: 14, marginRight: 8 },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textPrimary,
+    paddingVertical: 0,
   },
   filterBtn: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: 14,
     backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterIcon: { fontSize: 16, color: Colors.primary },
-  chipRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  filterBtnActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  chipRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -335,20 +421,24 @@ const styles = StyleSheet.create({
   countText: {
     fontSize: 12,
     color: Colors.textSecondary,
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  listContent: { paddingBottom: 40, flexGrow: 1 },
-  separator: { height: 1, backgroundColor: Colors.borderLight },
-  memberItem: {
+  listContent: { paddingBottom: 40, gap: 10, flexGrow: 1 },
+  memberCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
     gap: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
   },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
@@ -358,22 +448,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
   },
-  memberInfo: { flex: 1 },
+  memberInfo: { flex: 1, minWidth: 0 },
   memberName: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.textPrimary,
-    marginBottom: 2,
+    marginBottom: 3,
   },
-  memberMeta: { fontSize: 12, color: Colors.textSecondary },
-  memberRight: { alignItems: 'flex-end', gap: 4 },
+  memberMeta: { fontSize: 12, color: Colors.textSecondary, lineHeight: 16 },
+  memberRight: { alignItems: 'flex-end', gap: 6 },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
   statusBadgeText: { fontSize: 11, fontWeight: '600' },
-  arrears: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary },
+  arrears: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
   centered: {
     flex: 1,
     alignItems: 'center',

@@ -8,10 +8,12 @@ import {
   TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
 import { UserPlus, ChevronDown, Search } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
+import type { RootState } from '../../store';
 
 const DRIVES = ['Beaumont ED – Autumn drive', 'Mater campus – Winter drive'];
 
@@ -22,14 +24,18 @@ const SIGNUPS_TODAY = [
 ];
 
 /**
- * Membership drive hub — opened from "Register a member".
- * "New member application" starts the 3-step Portal-style form.
+ * Membership drive hub — Figma layout.
+ * "New member application" opens the 3-step application form.
  */
 const MembershipDriveScreen = () => {
   const navigation = useNavigation<any>();
+  const user = useSelector((s: RootState) => s.auth.user);
   const [drive, setDrive] = useState(DRIVES[0]);
   const [driveOpen, setDriveOpen] = useState(false);
   const [search, setSearch] = useState('');
+
+  const role = user?.role || 'Branch Officer';
+  const branch = user?.branches || 'Beaumont & Mater branches';
 
   const openApplication = () => {
     navigation.navigate(STACKS.APPLICATION_FORM, { driveName: drive });
@@ -39,6 +45,8 @@ const MembershipDriveScreen = () => {
     <View style={styles.screen}>
       <Header
         title="Membership drive"
+        role={role}
+        branch={branch}
         showBack
         onBack={() => navigation.goBack()}
       />
@@ -47,7 +55,9 @@ const MembershipDriveScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>Drive · every application is tagged with it</Text>
+        <Text style={styles.hint}>
+          Drive · every application is tagged with it
+        </Text>
 
         <TouchableOpacity
           style={styles.driveSelect}
@@ -56,10 +66,10 @@ const MembershipDriveScreen = () => {
           <Text style={styles.driveSelectText} numberOfLines={1}>
             {drive}
           </Text>
-          <ChevronDown size={18} color={Colors.textSecondary} />
+          <ChevronDown size={18} color={Colors.textMuted} strokeWidth={2} />
         </TouchableOpacity>
 
-        {driveOpen && (
+        {driveOpen ? (
           <View style={styles.driveMenu}>
             {DRIVES.map(d => (
               <TouchableOpacity
@@ -79,8 +89,9 @@ const MembershipDriveScreen = () => {
               </TouchableOpacity>
             ))}
           </View>
-        )}
+        ) : null}
 
+        {/* Stats — Figma */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>3</Text>
@@ -96,15 +107,18 @@ const MembershipDriveScreen = () => {
           </View>
         </View>
 
-        <Text style={styles.sectionLabel}>CHECK FOR AN EXISTING PROFILE FIRST</Text>
+        <Text style={styles.sectionLabel}>
+          CHECK FOR AN EXISTING PROFILE FIRST
+        </Text>
         <View style={styles.searchBar}>
-          <Search size={16} color={Colors.textMuted} />
+          <Search size={18} color={Colors.textMuted} strokeWidth={2} />
           <TextInput
             style={styles.searchInput}
             placeholder="Name, email or mobile"
             placeholderTextColor={Colors.textPlaceholder}
             value={search}
             onChangeText={setSearch}
+            returnKeyType="search"
           />
         </View>
 
@@ -116,19 +130,21 @@ const MembershipDriveScreen = () => {
           <Text style={styles.primaryBtnText}>New member application</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.sectionLabel, { marginTop: 22 }]}>SIGNED UP TODAY</Text>
+        <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
+          SIGNED UP TODAY
+        </Text>
         <View style={styles.listCard}>
           {SIGNUPS_TODAY.map((item, index) => (
-            <View key={item.id}>
-              <View style={styles.signupRow}>
-                <Text style={styles.signupName}>{item.name}</Text>
-                <Text style={styles.signupMeta}>
-                  {item.type} · {item.time}
-                </Text>
-              </View>
-              {index < SIGNUPS_TODAY.length - 1 ? (
-                <View style={styles.divider} />
-              ) : null}
+            <View
+              key={item.id}
+              style={[
+                styles.signupRow,
+                index === SIGNUPS_TODAY.length - 1 && styles.signupRowLast,
+              ]}>
+              <Text style={styles.signupName}>{item.name}</Text>
+              <Text style={styles.signupMeta}>
+                {item.type} · {item.time}
+              </Text>
             </View>
           ))}
         </View>
@@ -139,11 +155,15 @@ const MembershipDriveScreen = () => {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
-  content: { paddingHorizontal: 16, paddingBottom: 40 },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    paddingTop: 4,
+  },
   hint: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   driveSelect: {
     flexDirection: 'row',
@@ -155,7 +175,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    marginBottom: 8,
+    marginBottom: 14,
   },
   driveSelectText: {
     flex: 1,
@@ -166,10 +186,11 @@ const styles = StyleSheet.create({
   },
   driveMenu: {
     backgroundColor: Colors.surface,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: 12,
+    marginTop: -6,
+    marginBottom: 14,
     overflow: 'hidden',
   },
   driveOption: {
@@ -187,34 +208,38 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
-    marginBottom: 20,
+    marginBottom: 22,
   },
   statCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '700',
     color: Colors.textPrimary,
+    letterSpacing: -0.5,
+    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
-    marginTop: 2,
+    fontWeight: '400',
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.textMuted,
-    letterSpacing: 0.4,
-    marginBottom: 8,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  sectionLabelSpaced: {
+    marginTop: 22,
   },
   searchBar: {
     flexDirection: 'row',
@@ -225,20 +250,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
+    height: 48,
     marginBottom: 14,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 13,
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textPrimary,
+    paddingVertical: 0,
   },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.primaryLight,
+    backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.primary,
     borderRadius: 14,
@@ -246,21 +272,27 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     color: Colors.primary,
   },
   listCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 14,
+    borderColor: Colors.borderLight,
+    overflow: 'hidden',
   },
   signupRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
     paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+  },
+  signupRowLast: {
+    borderBottomWidth: 0,
   },
   signupName: {
     fontSize: 15,
@@ -268,12 +300,8 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   signupMeta: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: Colors.border,
   },
 });
 

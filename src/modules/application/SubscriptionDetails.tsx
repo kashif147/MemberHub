@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import {
-  ConsentSwitch,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Linking,
+} from 'react-native';
+import {
   FieldLabel,
   FormCard,
   RadioRow,
@@ -17,6 +22,45 @@ import {
   isSalaryDeductionPaymentType,
   workLocationAllowsSalaryDeduction,
 } from '../../helpers/subscriptionPricing.helper';
+
+/** Portal / CRM membership org label in consent copy */
+const ORG_NAME = 'INMO';
+
+const openUrl = (url: string) => {
+  Linking.openURL(url).catch(() => {});
+};
+
+const ConsentBox = ({
+  checked,
+  onToggle,
+  title,
+  note,
+  important,
+  error,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  title: React.ReactNode;
+  note?: React.ReactNode;
+  important?: React.ReactNode;
+  error?: boolean;
+}) => (
+  <TouchableOpacity
+    style={[styles.consentBox, error && styles.consentBoxError]}
+    onPress={onToggle}
+    activeOpacity={0.75}
+    accessibilityRole="checkbox"
+    accessibilityState={{ checked }}>
+    <View style={[styles.checkboxBox, checked && styles.checkboxBoxChecked]}>
+      {checked ? <Text style={styles.checkboxTick}>✓</Text> : null}
+    </View>
+    <View style={styles.consentTextCol}>
+      <Text style={styles.consentTitle}>{title}</Text>
+      {note ? <Text style={styles.consentNote}>{note}</Text> : null}
+      {important ? <Text style={styles.consentImportant}>{important}</Text> : null}
+    </View>
+  </TouchableOpacity>
+);
 
 const MEMBER_STATUSES = [
   { label: 'New member', value: 'new' },
@@ -99,13 +143,22 @@ const SubscriptionDetails = ({
     [formData?.paymentType],
   );
 
+  /** Portal / CRM: payroll required for salary-deduction payment types */
+  const requiresPayrollNo = (paymentType?: string) =>
+    isSalaryDeductionPaymentType(paymentType);
+
   const handlePaymentTypeChange = (v: string) => {
+    const oldPaymentType = formData?.paymentType;
     const defaultFreq = getDefaultFrequencyForPaymentType(v);
     onFormDataChange({
       ...formData,
       paymentType: v,
       paymentFrequency: defaultFreq || formData?.paymentFrequency || '',
-      payrollNo: isSalaryDeductionPaymentType(v) ? formData?.payrollNo : '',
+      // Portal: clear payroll only when leaving a salary-deduction type
+      payrollNo:
+        requiresPayrollNo(oldPaymentType) && !requiresPayrollNo(v)
+          ? ''
+          : formData?.payrollNo || '',
     });
   };
 
@@ -139,7 +192,7 @@ const SubscriptionDetails = ({
     [secondarySectionOptions, primarySections],
   );
 
-  const isPayroll = isSalaryDeductionPaymentType(formData?.paymentType);
+  const payrollRequired = requiresPayrollNo(formData?.paymentType);
 
   const isRejoin =
     formData?.memberStatus === 'rejoin' ||
@@ -194,16 +247,23 @@ const SubscriptionDetails = ({
           </>
         )}
 
-        {isPayroll && (
+        {/* CRM: show when salary-deduction payment; always editable when shown */}
+        {payrollRequired ? (
           <>
-            <FieldLabel label="Payroll number" required error={err('payrollNo')} />
+            <FieldLabel
+              label="Payroll No"
+              required
+              error={err('payrollNo')}
+            />
             <TextField
               value={formData?.payrollNo || ''}
               onChangeText={t => set('payrollNo', t)}
+              placeholder="Enter your payroll number"
+              editable
               error={err('payrollNo')}
             />
           </>
-        )}
+        ) : null}
       </FormCard>
 
       <FormCard title="Member Status">
@@ -324,11 +384,43 @@ const SubscriptionDetails = ({
 
       {formData?.memberStatus === 'new' && formData?.otherScheme === 'no' && (
         <FormCard title="Additional Options for New Members">
-          <ConsentSwitch
-            label="Tick here to join Rewards for INMO members"
-            hint="By ticking, you agree to Cornmarket Rewards terms."
-            value={Boolean(formData?.inmoRewards)}
-            onValueChange={v => set('inmoRewards', v)}
+          <ConsentBox
+            checked={Boolean(formData?.inmoRewards)}
+            onToggle={() => set('inmoRewards', !formData?.inmoRewards)}
+            title={
+              <>
+                Tick here to join{' '}
+                <Text
+                  style={styles.link}
+                  onPress={() => openUrl('https://cornmarket.ie/rewards')}>
+                  Rewards
+                </Text>{' '}
+                for {ORG_NAME} members
+              </>
+            }
+            note={
+              <>
+                By ticking here, you confirm that you agree to the Terms &
+                Conditions available on{' '}
+                <Text
+                  style={styles.link}
+                  onPress={() =>
+                    openUrl('https://cornmarket.ie/rewards-club-terms')
+                  }>
+                  Cornmarket.ie/rewards-club-terms
+                </Text>{' '}
+                and the Data Protection Statement available on{' '}
+                <Text
+                  style={styles.link}
+                  onPress={() =>
+                    openUrl('https://cornmarket.ie/rewards-dps')
+                  }>
+                  Cornmarket.ie/rewards-dps
+                </Text>
+                . Cornmarket will contact you about your Rewards Benefits. You
+                can opt out at any time.
+              </>
+            }
           />
         </FormCard>
       )}
@@ -336,16 +428,40 @@ const SubscriptionDetails = ({
       {formData?.memberStatus === 'graduate' &&
         formData?.otherScheme === 'no' && (
           <FormCard title="Additional Options for Newly Graduated Members">
-            <ConsentSwitch
-              label="Exclusive discounts and offers for INMO members"
-              value={Boolean(formData?.exclusiveDiscountsAndOffers)}
-              onValueChange={v => set('exclusiveDiscountsAndOffers', v)}
+            <ConsentBox
+              checked={Boolean(formData?.exclusiveDiscountsAndOffers)}
+              onToggle={() =>
+                set(
+                  'exclusiveDiscountsAndOffers',
+                  !formData?.exclusiveDiscountsAndOffers,
+                )
+              }
+              title={`Would you like to hear about exclusive discounts and offers for ${ORG_NAME} members?`}
             />
             <View style={{ height: 12 }} />
-            <ConsentSwitch
-              label="I consent to INMO Income Protection Scheme"
-              value={Boolean(formData?.incomeProtectionScheme)}
-              onValueChange={v => set('incomeProtectionScheme', v)}
+            <ConsentBox
+              checked={Boolean(formData?.incomeProtectionScheme)}
+              onToggle={() =>
+                set(
+                  'incomeProtectionScheme',
+                  !formData?.incomeProtectionScheme,
+                )
+              }
+              title={
+                <>
+                  I consent to{' '}
+                  <Text
+                    style={styles.link}
+                    onPress={() =>
+                      openUrl('https://cornmarket.ie/income-protection')
+                    }>
+                    {ORG_NAME} Income Protection Scheme
+                  </Text>
+                  .
+                </>
+              }
+              note={`By selecting 'I consent' below, you are agreeing to the ${ORG_NAME}, sharing your Trade Union membership details with Cornmarket. Cornmarket as Scheme Administrator will process and retain details of your Trade Union membership for the purposes of assessing eligibility and admitting eligible members (automatically) to the Income Protection Scheme (with 9 Months' Free Cover), and for the ongoing administration of the Scheme. Where you have also opted in to receiving marketing communications, Cornmarket will provide you with information on discounts and offers they have for ${ORG_NAME} members. This consent can be withdrawn at any time by emailing Cornmarket at dataprotection@cornmarket.ie. Please note, if you do consent below, your data will be shared with Cornmarket, and you will be assessed for eligibility for automatic Income Protection Scheme membership. If you do not consent, your data will not be shared with Cornmarket for this purpose, you will not be assessed for automatic Scheme membership (including 9 Months' Free Cover) and you will have to contact Cornmarket separately should you wish to apply for Scheme membership. This offer will run on a pilot basis. Terms and conditions apply and are subject to change.`}
+              important="Important: If you do not give your consent, your Trade union membership data will not be shared with Cornmarket for this purpose. This means you will not be assessed for Automatic Access to the Scheme."
             />
           </FormCard>
         )}
@@ -454,20 +570,52 @@ const SubscriptionDetails = ({
       </FormCard>
 
       <FormCard title="Additional Services & Terms">
-        <ConsentSwitch
-          label="Value added services"
-          value={Boolean(formData?.valueAddedServices)}
-          onValueChange={v => set('valueAddedServices', v)}
+        <ConsentBox
+          checked={Boolean(formData?.valueAddedServices)}
+          onToggle={() =>
+            set('valueAddedServices', !formData?.valueAddedServices)
+          }
+          title="Tick here to allow our partners to contact you about Value added Services by Email and SMS"
         />
         <View style={{ height: 12 }} />
-        <ConsentSwitch
-          label="I agree to the Terms & Conditions *"
-          value={Boolean(formData?.termsAndConditions)}
-          onValueChange={v => set('termsAndConditions', v)}
+        <ConsentBox
+          checked={Boolean(formData?.termsAndConditions)}
+          onToggle={() =>
+            set('termsAndConditions', !formData?.termsAndConditions)
+          }
+          error={Boolean(showValidation && !formData?.termsAndConditions)}
+          title={
+            <>
+              I have read and agree to the {ORG_NAME}{' '}
+              <Text
+                style={styles.link}
+                onPress={() =>
+                  openUrl('https://www.inmo.ie/DataProtection')
+                }>
+                Data Protection Statement
+              </Text>
+              , the {ORG_NAME}{' '}
+              <Text
+                style={styles.link}
+                onPress={() =>
+                  openUrl('https://www.inmo.ie/PrivacyStatement')
+                }>
+                Privacy Statement
+              </Text>{' '}
+              and the {ORG_NAME}{' '}
+              <Text
+                style={styles.link}
+                onPress={() =>
+                  openUrl('https://www.inmo.ie/ConditionsOfMembership')
+                }>
+                Conditions of Membership
+              </Text>
+              {showValidation && !formData?.termsAndConditions ? (
+                <Text style={styles.requiredInline}> (Required)</Text>
+              ) : null}
+            </>
+          }
         />
-        {showValidation && !formData?.termsAndConditions ? (
-          <Text style={styles.errorText}>Terms & Conditions are required</Text>
-        ) : null}
       </FormCard>
     </View>
   );
@@ -508,10 +656,69 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 8,
   },
-  errorText: {
-    marginTop: 8,
-    color: '#C0392B',
+  consentBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  consentBoxError: {
+    borderColor: '#C0392B',
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#9CA3AF',
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  checkboxTick: {
+    color: Colors.white,
     fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 14,
+  },
+  consentTextCol: { flex: 1 },
+  consentTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  consentNote: {
+    marginTop: 6,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 17,
+  },
+  consentImportant: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    lineHeight: 17,
+  },
+  link: {
+    color: '#B45309',
+    textDecorationLine: 'underline',
+    fontWeight: '700',
+  },
+  requiredInline: {
+    color: '#C0392B',
+    fontWeight: '700',
   },
 });
 

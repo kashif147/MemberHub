@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Bell } from 'lucide-react-native';
+import { Bell, ChevronLeft, LayoutGrid } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 
 interface HeaderProps {
@@ -30,25 +30,28 @@ export const Header: React.FC<HeaderProps> = ({
             onPress={onBack}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.backIcon}>‹</Text>
+            <ChevronLeft size={22} color={Colors.textPrimary} strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
 
         <View style={styles.roleContainer}>
           <View style={styles.roleIcon}>
-            <Text style={styles.roleIconText}>⊞</Text>
+            <LayoutGrid size={11} color={Colors.primary} strokeWidth={2.4} />
           </View>
           <Text style={styles.roleText} numberOfLines={1}>
             {role} · {branch}
           </Text>
         </View>
+      </View>
 
+      {/* Figma: title + bell on the same row */}
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>{title}</Text>
         <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
           <Bell size={18} color={Colors.textPrimary} strokeWidth={2} />
           <View style={styles.bellBadge} />
         </TouchableOpacity>
       </View>
-      <Text style={styles.title}>{title}</Text>
     </View>
   );
 };
@@ -62,23 +65,18 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
     gap: 8,
   },
   backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 26,
-    color: Colors.textPrimary,
-    marginTop: -2,
-    lineHeight: 28,
   },
   roleContainer: {
     flexDirection: 'row',
@@ -89,15 +87,11 @@ const styles = StyleSheet.create({
   roleIcon: {
     width: 18,
     height: 18,
-    borderRadius: 3,
+    borderRadius: 4,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
-  },
-  roleIconText: {
-    fontSize: 9,
-    color: Colors.primary,
   },
   roleText: {
     fontSize: 12,
@@ -105,34 +99,38 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flexShrink: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  title: {
+    flex: 1,
+    fontSize: 30,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    letterSpacing: -0.6,
+  },
   bellButton: {
-    width: 38,
-    height: 38,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
   },
   bellBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 9,
+    right: 9,
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: Colors.primary,
     borderWidth: 1.5,
     borderColor: Colors.white,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    letterSpacing: -0.5,
   },
 });

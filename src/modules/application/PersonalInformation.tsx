@@ -61,9 +61,9 @@ const PersonalInformation = ({
       titleOptions.length
         ? titleOptions
         : ['Mr', 'Mrs', 'Ms', 'Miss', 'Dr', 'Prof'].map(v => ({
-            label: v,
-            value: v,
-          })),
+          label: v,
+          value: v,
+        })),
     [titleOptions],
   );
 
@@ -72,9 +72,9 @@ const PersonalInformation = ({
       genderOptions.length
         ? genderOptions
         : ['Male', 'Female', 'Other', 'Prefer not to say'].map(v => ({
-            label: v,
-            value: v,
-          })),
+          label: v,
+          value: v,
+        })),
     [genderOptions],
   );
 
@@ -83,9 +83,9 @@ const PersonalInformation = ({
       countryOptions.length
         ? countryOptions
         : ['Ireland', 'United Kingdom', 'Other'].map(v => ({
-            label: v,
-            value: v,
-          })),
+          label: v,
+          value: v,
+        })),
     [countryOptions],
   );
 
@@ -209,6 +209,23 @@ const PersonalInformation = ({
           error={err('title')}
         />
 
+
+        <FieldLabel label="Forename" required error={err('forename')} />
+        <TextField
+          placeholder="Enter your forename"
+          value={formData?.forename || ''}
+          onChangeText={t => set('forename', t)}
+          error={err('forename')}
+        />
+
+        <FieldLabel label="Surname" required error={err('surname')} />
+        <TextField
+          placeholder="Enter your surname"
+          value={formData?.surname || ''}
+          onChangeText={t => set('surname', t)}
+          error={err('surname')}
+        />
+
         <FieldLabel label="Gender" required error={err('gender')} />
         <SelectField
           value={formData?.gender || ''}
@@ -217,21 +234,6 @@ const PersonalInformation = ({
           onSelect={v => set('gender', v)}
           error={err('gender')}
         />
-
-        <FieldLabel label="Forename" required error={err('forename')} />
-        <TextField
-          value={formData?.forename || ''}
-          onChangeText={t => set('forename', t)}
-          error={err('forename')}
-        />
-
-        <FieldLabel label="Surname" required error={err('surname')} />
-        <TextField
-          value={formData?.surname || ''}
-          onChangeText={t => set('surname', t)}
-          error={err('surname')}
-        />
-
         <DatePicker
           label="Date of birth"
           name="dob"
@@ -257,8 +259,14 @@ const PersonalInformation = ({
 
       <FormSection title="Consent">
         <ConsentSwitch
-          label="Consent to receive correspondence"
-          hint="Switch off if the applicant would not like to receive correspondence via email or phone."
+          label="Consent to receive Correspondence"
+          hint={
+            <Text style={styles.consentHint}>
+              Please un-tick this box if you would{' '}
+              <Text style={styles.consentHintBold}>NOT like</Text> to receive
+              correspondence via email or phone.
+            </Text>
+          }
           value={formData?.consent !== false}
           onValueChange={v => set('consent', v)}
         />
@@ -303,7 +311,7 @@ const PersonalInformation = ({
           />
         </View>
 
-        <FieldLabel label="Address line 1" required error={err('addressLine1')} />
+        <FieldLabel label="Address line 1 (Building or House)" required error={err('addressLine1')} />
         <TextField
           value={formData?.addressLine1 || ''}
           onChangeText={t => set('addressLine1', t)}
@@ -311,21 +319,21 @@ const PersonalInformation = ({
           error={err('addressLine1')}
         />
 
-        <FieldLabel label="Address line 2" />
+        <FieldLabel label="Address line 2 (Street or Road)" />
         <TextField
           value={formData?.addressLine2 || ''}
           onChangeText={t => set('addressLine2', t)}
           placeholder="Street / road"
         />
 
-        <FieldLabel label="Address line 3" />
+        <FieldLabel label="Address line 3 (Area or Town)" />
         <TextField
           value={formData?.addressLine3 || ''}
           onChangeText={t => set('addressLine3', t)}
           placeholder="Area / town"
         />
 
-        <FieldLabel label="Address line 4" required error={err('addressLine4')} />
+        <FieldLabel label="Address line 4 (County / City / Postcode)" required error={err('addressLine4')} />
         <TextField
           value={formData?.addressLine4 || ''}
           onChangeText={t => set('addressLine4', t)}
@@ -350,62 +358,7 @@ const PersonalInformation = ({
       </FormSection>
 
       <FormSection title="Contact details">
-        <FieldLabel
-          label="Preferred email"
-          required
-          error={err('preferredEmail')}
-        />
-        <SelectField
-          value={formData?.preferredEmail || ''}
-          placeholder="Select preferred email"
-          options={PREFERRED_EMAIL}
-          onSelect={v => set('preferredEmail', v)}
-          error={err('preferredEmail')}
-        />
-
-        <FieldLabel
-          label="Personal email"
-          required={formData?.preferredEmail === 'Personal'}
-          error={
-            showValidation &&
-            formData?.preferredEmail === 'Personal' &&
-            !formData?.personalEmail
-          }
-        />
-        <TextField
-          value={formData?.personalEmail || ''}
-          onChangeText={t => set('personalEmail', t)}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          error={
-            showValidation &&
-            formData?.preferredEmail === 'Personal' &&
-            !formData?.personalEmail
-          }
-        />
-
-        <FieldLabel
-          label="Work email"
-          required={formData?.preferredEmail === 'Work'}
-          error={
-            showValidation &&
-            formData?.preferredEmail === 'Work' &&
-            !formData?.workEmail
-          }
-        />
-        <TextField
-          value={formData?.workEmail || ''}
-          onChangeText={t => set('workEmail', t)}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          error={
-            showValidation &&
-            formData?.preferredEmail === 'Work' &&
-            !formData?.workEmail
-          }
-        />
-
-        <FieldLabel label="Mobile number" required error={err('mobileNo')} />
+        <FieldLabel label="Mobile No" required error={err('mobileNo')} />
         <View
           style={[
             styles.phoneRow,
@@ -438,12 +391,70 @@ const PersonalInformation = ({
           />
         </View>
 
-        <FieldLabel label="Home / work telephone" />
+        <FieldLabel label="Home / Work Tel Number" />
         <TextField
+          placeholder="Enter your home / work tel number"
           value={formData?.homeWorkTelNo || ''}
           onChangeText={t => set('homeWorkTelNo', t)}
           keyboardType="phone-pad"
         />
+        <FieldLabel
+          label="Preferred Email"
+          required
+          error={err('preferredEmail')}
+        />
+        <SelectField
+          value={formData?.preferredEmail || ''}
+          placeholder="Select preferred email"
+          options={PREFERRED_EMAIL}
+          onSelect={v => set('preferredEmail', v)}
+          error={err('preferredEmail')}
+        />
+
+        <FieldLabel
+          label="Personal Email"
+          required={formData?.preferredEmail === 'Personal'}
+          error={
+            showValidation &&
+            formData?.preferredEmail === 'Personal' &&
+            !formData?.personalEmail
+          }
+        />
+        <TextField
+          placeholder="Enter your personal email"
+          value={formData?.personalEmail || ''}
+          onChangeText={t => set('personalEmail', t)}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          error={
+            showValidation &&
+            formData?.preferredEmail === 'Personal' &&
+            !formData?.personalEmail
+          }
+        />
+
+        <FieldLabel
+          label="Work Email"
+          required={formData?.preferredEmail === 'Work'}
+          error={
+            showValidation &&
+            formData?.preferredEmail === 'Work' &&
+            !formData?.workEmail
+          }
+        />
+        <TextField
+          placeholder="Enter your work email"
+          value={formData?.workEmail || ''}
+          onChangeText={t => set('workEmail', t)}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          error={
+            showValidation &&
+            formData?.preferredEmail === 'Work' &&
+            !formData?.workEmail
+          }
+        />
+
       </FormSection>
     </View>
   );
@@ -509,6 +520,15 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   phoneInput: { borderWidth: 0 },
+  consentHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 17,
+  },
+  consentHintBold: {
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
 });
 
 export default PersonalInformation;
