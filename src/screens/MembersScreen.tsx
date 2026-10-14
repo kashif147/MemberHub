@@ -89,7 +89,7 @@ const StatusBadge = ({ status }: { status: string }) => {
         styles.statusBadge,
         {
           backgroundColor: s.bg,
-          borderWidth: s.bordered ? 1 : 0,
+          borderWidth: s.bordered ? 1.5 : 0,
           borderColor: Colors.primary,
         },
       ]}>
@@ -104,26 +104,35 @@ const MemberItem = ({
 }: {
   item: Member;
   onPress: () => void;
-}) => (
-  <TouchableOpacity
-    style={styles.memberCard}
-    activeOpacity={0.75}
-    onPress={onPress}>
-    <AvatarBadge initials={item.initials} />
-    <View style={styles.memberInfo}>
-      <Text style={styles.memberName} numberOfLines={1}>
-        {item.name}
-      </Text>
-      <Text style={styles.memberMeta} numberOfLines={2}>
-        {item.memberNo} · {item.role} · {item.branch}
-      </Text>
-    </View>
-    <View style={styles.memberRight}>
-      <StatusBadge status={item.status} />
-      {item.arrears ? <Text style={styles.arrears}>{item.arrears}</Text> : null}
-    </View>
-  </TouchableOpacity>
-);
+}) => {
+  const meta = [item.memberNo, item.role || item.grade, item.branch]
+    .map(v => String(v || '').trim())
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <TouchableOpacity
+      style={styles.memberCard}
+      activeOpacity={0.75}
+      onPress={onPress}>
+      <AvatarBadge initials={item.initials} />
+      <View style={styles.memberInfo}>
+        <Text style={styles.memberName} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={styles.memberMeta} numberOfLines={2}>
+          {meta}
+        </Text>
+      </View>
+      <View style={styles.memberRight}>
+        <StatusBadge status={item.status} />
+        {item.arrears ? (
+          <Text style={styles.arrears}>{item.arrears}</Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const MembersScreen = () => {
   const navigation = useNavigation<any>();
@@ -421,50 +430,71 @@ const styles = StyleSheet.create({
   countText: {
     fontSize: 12,
     color: Colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: 14,
+    lineHeight: 17,
   },
-  listContent: { paddingBottom: 40, gap: 10, flexGrow: 1 },
+  listContent: {
+    paddingBottom: 40,
+    gap: 4,
+    flexGrow: 1,
+  },
   memberCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
     borderWidth: 1,
     borderColor: Colors.borderLight,
+    shadowColor: '#1A1A2E',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: Colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   avatarText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.textPrimary,
   },
   memberInfo: { flex: 1, minWidth: 0 },
   memberName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.textPrimary,
-    marginBottom: 3,
+    marginBottom: 4,
+    letterSpacing: -0.2,
   },
-  memberMeta: { fontSize: 12, color: Colors.textSecondary, lineHeight: 16 },
-  memberRight: { alignItems: 'flex-end', gap: 6 },
+  memberMeta: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  memberRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 999,
   },
-  statusBadgeText: { fontSize: 11, fontWeight: '600' },
+  statusBadgeText: { fontSize: 12, fontWeight: '600' },
   arrears: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: Colors.textPrimary,
   },

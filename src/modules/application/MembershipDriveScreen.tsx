@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,23 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { UserPlus, ChevronDown, Search } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
+import {
+  DEFAULT_DRIVES,
+  getDrivePickerNames,
+} from '../../helpers/membershipDrive.helper';
 import type { RootState } from '../../store';
-
-const DRIVES = ['Beaumont ED – Autumn drive', 'Mater campus – Winter drive'];
+import type { HomeStackParamList } from '../../navigation/HomeStack';
 
 const SIGNUPS_TODAY = [
   { id: '1', name: 'Laura Hegarty', type: 'New', time: '16:40' },
@@ -29,13 +37,36 @@ const SIGNUPS_TODAY = [
  */
 const MembershipDriveScreen = () => {
   const navigation = useNavigation<any>();
+  const route =
+    useRoute<RouteProp<HomeStackParamList, typeof STACKS.MEMBERSHIP_DRIVE>>();
   const user = useSelector((s: RootState) => s.auth.user);
-  const [drive, setDrive] = useState(DRIVES[0]);
+  const [drives, setDrives] = useState<string[]>(DEFAULT_DRIVES);
+  const [drive, setDrive] = useState(DEFAULT_DRIVES[0]);
   const [driveOpen, setDriveOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const names = await getDrivePickerNames();
+        if (cancelled) return;
+        setDrives(names);
+        const preferred = route.params?.driveName;
+        if (preferred && names.includes(preferred)) {
+          setDrive(preferred);
+        } else if (!names.includes(drive)) {
+          setDrive(names[0] || DEFAULT_DRIVES[0]);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [route.params?.driveName]),
+  );
 
   const openApplication = () => {
     navigation.navigate(STACKS.APPLICATION_FORM, { driveName: drive });
@@ -71,7 +102,7 @@ const MembershipDriveScreen = () => {
 
         {driveOpen ? (
           <View style={styles.driveMenu}>
-            {DRIVES.map(d => (
+            {drives.map(d => (
               <TouchableOpacity
                 key={d}
                 style={styles.driveOption}

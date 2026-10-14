@@ -4,7 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -13,78 +13,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
+import { CaseListCard, CaseListRow } from '../components/CaseListRow';
 import { loadCasesList } from '../services/issues.services';
 import { STACKS } from '../enums/ScreenEnums';
 import type { CasesStackParamList } from '../navigation/CasesStack';
-import type { CaseItem, CaseStatus } from '../data/mockCases';
+import type { CaseItem } from '../data/mockCases';
 import type { RootState } from '../store';
 
 const FILTER_TABS = ['All', 'Open', 'In progress', 'Closed'] as const;
-
-const StatusBadge = ({ status }: { status: CaseStatus }) => {
-  const getStyle = () => {
-    switch (status) {
-      case 'In progress':
-        return {
-          bg: Colors.statusInProgressBg,
-          text: Colors.statusInProgress,
-          bordered: false,
-        };
-      case 'Open':
-        return {
-          bg: Colors.surface,
-          text: Colors.primary,
-          bordered: true,
-        };
-      case 'Closed':
-        return {
-          bg: Colors.statusClosedBg,
-          text: Colors.statusClosed,
-          bordered: false,
-        };
-    }
-  };
-  const s = getStyle();
-  return (
-    <View
-      style={[
-        styles.badge,
-        {
-          backgroundColor: s.bg,
-          borderWidth: s.bordered ? 1 : 0,
-          borderColor: Colors.border,
-        },
-      ]}>
-      <Text style={[styles.badgeText, { color: s.text }]}>{status}</Text>
-    </View>
-  );
-};
-
-const CaseCard = ({
-  item,
-  onPress,
-}: {
-  item: CaseItem;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity
-    style={styles.caseCard}
-    activeOpacity={0.75}
-    onPress={onPress}>
-    <View style={styles.caseCardHeader}>
-      <Text style={styles.caseCategory} numberOfLines={1}>
-        {item.category}
-      </Text>
-      <StatusBadge status={item.status} />
-    </View>
-    <Text style={styles.caseTitle} numberOfLines={2}>
-      {item.title}
-    </Text>
-    <Text style={styles.caseMeta} numberOfLines={1}>
-      {item.caseNo} · {item.member} · {item.date}
-    </Text>
-  </TouchableOpacity>
-);
 
 const CasesScreen = () => {
   const navigation =
@@ -155,20 +91,7 @@ const CasesScreen = () => {
             <Text style={styles.centerText}>Loading cases…</Text>
           </View>
         ) : (
-          <FlatList
-            data={filtered}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <CaseCard
-                item={item}
-                onPress={() =>
-                  navigation.navigate(STACKS.CASE_DETAIL, {
-                    issueId: item.id,
-                    title: item.caseNo,
-                  })
-                }
-              />
-            )}
+          <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.listContent,
@@ -180,8 +103,8 @@ const CasesScreen = () => {
                 onRefresh={() => load(true)}
                 tintColor={Colors.primary}
               />
-            }
-            ListEmptyComponent={
+            }>
+            {filtered.length === 0 ? (
               <View style={styles.center}>
                 <Text style={styles.centerText}>
                   {error ||
@@ -198,8 +121,27 @@ const CasesScreen = () => {
                   </TouchableOpacity>
                 ) : null}
               </View>
-            }
-          />
+            ) : (
+              <CaseListCard>
+                {filtered.map((item, index) => (
+                  <CaseListRow
+                    key={item.id}
+                    title={item.title}
+                    caseNo={item.caseNo}
+                    member={item.member}
+                    status={item.status}
+                    last={index === filtered.length - 1}
+                    onPress={() =>
+                      navigation.navigate(STACKS.CASE_DETAIL, {
+                        issueId: item.id,
+                        title: item.caseNo,
+                      })
+                    }
+                  />
+                ))}
+              </CaseListCard>
+            )}
+          </ScrollView>
         )}
       </View>
     </View>
@@ -213,7 +155,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 14,
   },
   tabRow: {
@@ -222,11 +164,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 4,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
   tab: {
     flex: 1,
@@ -249,7 +186,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
-    gap: 12,
     paddingBottom: 30,
   },
   listEmpty: {
@@ -280,49 +216,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
     fontSize: 13,
-  },
-  caseCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  caseCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-    gap: 8,
-  },
-  caseCategory: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.primary,
-    letterSpacing: 0.5,
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  caseTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 6,
-  },
-  caseMeta: {
-    fontSize: 12,
-    color: Colors.textSecondary,
   },
 });
 

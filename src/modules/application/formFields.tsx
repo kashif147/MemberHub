@@ -33,7 +33,7 @@ export const FormSection = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <View style={styles.section}>s
+  <View style={styles.section}>
     <Text style={styles.sectionTitle}>{title}</Text>
     {children}
   </View>
@@ -205,6 +205,7 @@ export const RadioRow = ({
   onChange,
   error,
   wrap = false,
+  stacked = false,
   disabled = false,
 }: {
   value: string;
@@ -213,6 +214,8 @@ export const RadioRow = ({
   error?: boolean;
   /** Multi-line / 2-column wrap — Portal nurse-type layout */
   wrap?: boolean;
+  /** Vertical list — Figma drive type radios */
+  stacked?: boolean;
   disabled?: boolean;
 }) => {
   const normalized = (options || []).map(opt =>
@@ -221,7 +224,11 @@ export const RadioRow = ({
   return (
     <View
       style={[
-        wrap ? styles.radioGroup : styles.radioRow,
+        stacked
+          ? styles.radioStacked
+          : wrap
+            ? styles.radioGroup
+            : styles.radioRow,
         error && styles.inputError,
         disabled && styles.radioDisabled,
       ]}>
@@ -230,7 +237,11 @@ export const RadioRow = ({
         return (
           <TouchableOpacity
             key={opt.value}
-            style={[styles.radioOption, wrap && styles.radioOptionWrap]}
+            style={[
+              styles.radioOption,
+              wrap && styles.radioOptionWrap,
+              stacked && styles.radioOptionStacked,
+            ]}
             onPress={() => {
               if (!disabled) onChange(opt.value);
             }}
@@ -395,12 +406,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
   },
+  radioStacked: {
+    flexDirection: 'column',
+    gap: 14,
+    paddingVertical: 4,
+    marginBottom: 12,
+  },
   radioOption: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   radioOptionWrap: {
     marginBottom: 10,
     marginRight: 12,
     paddingVertical: 4,
     maxWidth: '100%',
+  },
+  radioOptionStacked: {
+    paddingVertical: 2,
   },
   radioOuter: {
     width: 20,

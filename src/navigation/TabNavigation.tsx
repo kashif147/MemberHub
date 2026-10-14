@@ -127,7 +127,7 @@ function CustomTabBar({ state, navigation }: any) {
         }}
         onNewDrive={() => {
           navigation.navigate(STACKS.HOME, {
-            screen: STACKS.MEMBERSHIP_DRIVE,
+            screen: STACKS.CREATE_DRIVE,
           });
         }}
       />

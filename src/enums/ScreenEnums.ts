@@ -2,6 +2,7 @@ export const STACKS = {
   HOME: 'Home',
   HOME_MAIN: 'HomeMain',
   MEMBERSHIP_DRIVE: 'MembershipDrive',
+  CREATE_DRIVE: 'CreateDrive',
   APPLICATION_FORM: 'ApplicationForm',
   MEMBERS: 'Members',
   MEMBERS_LIST: 'MembersList',

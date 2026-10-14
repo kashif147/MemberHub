@@ -12,6 +12,8 @@ import { useSelector } from 'react-redux';
 import { Search, UserPlus } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
+import { CaseListCard, CaseListRow } from '../components/CaseListRow';
+import { CASES } from '../data/mockCases';
 import { STACKS } from '../enums/ScreenEnums';
 import type { RootState } from '../store';
 
@@ -37,69 +39,6 @@ const StatCard = ({
     <Text style={styles.statLabel}>{label}</Text>
   </TouchableOpacity>
 );
-
-const CaseItem = ({
-  title,
-  id,
-  member,
-  status,
-  last,
-}: {
-  title: string;
-  id: string;
-  member: string;
-  status: 'In progress' | 'Open' | 'Closed';
-  last?: boolean;
-}) => {
-  const badge = (() => {
-    switch (status) {
-      case 'In progress':
-        return {
-          bg: Colors.statusInProgressBg,
-          text: Colors.statusInProgress,
-          bordered: false,
-        };
-      case 'Open':
-        return {
-          bg: Colors.surface,
-          text: Colors.primary,
-          bordered: true,
-        };
-      case 'Closed':
-        return {
-          bg: Colors.statusClosedBg,
-          text: Colors.statusClosed,
-          bordered: false,
-        };
-    }
-  })();
-
-  return (
-    <View style={[styles.caseItem, last && styles.caseItemLast]}>
-      <View style={styles.caseLeft}>
-        <Text style={styles.caseTitle} numberOfLines={2}>
-          {title}
-        </Text>
-        <Text style={styles.caseMeta}>
-          {id} · {member}
-        </Text>
-      </View>
-      <View
-        style={[
-          styles.caseBadge,
-          {
-            backgroundColor: badge.bg,
-            borderWidth: badge.bordered ? 1 : 0,
-            borderColor: Colors.primary,
-          },
-        ]}>
-        <Text style={[styles.caseBadgeText, { color: badge.text }]}>
-          {status}
-        </Text>
-      </View>
-    </View>
-  );
-};
 
 const HomeScreen = () => {
   const navigation = useNavigation<any>();
@@ -190,27 +129,27 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.casesList}>
-          <CaseItem
-            title="Unpaid overtime – August roster"
-            id="CS-24018"
-            member="Ciarán Doyle"
-            status="In progress"
-          />
-          <CaseItem
-            title="ED staffing levels on nights"
-            id="CS-24031"
-            member="Aoife Brennan"
-            status="Open"
-          />
-          <CaseItem
-            title="Annual leave refusal"
-            id="CS-23977"
-            member="Maria Santos"
-            status="Closed"
-            last
-          />
-        </View>
+        <CaseListCard>
+          {CASES.slice(0, 3).map((item, index, arr) => (
+            <CaseListRow
+              key={item.id}
+              title={item.title}
+              caseNo={item.caseNo}
+              member={item.member}
+              status={item.status}
+              last={index === arr.length - 1}
+              onPress={() =>
+                navigation.getParent()?.navigate(STACKS.CASES, {
+                  screen: STACKS.CASE_DETAIL,
+                  params: {
+                    issueId: item.id,
+                    title: item.caseNo,
+                  },
+                })
+              }
+            />
+          ))}
+        </CaseListCard>
       </ScrollView>
     </View>
   );
@@ -351,7 +290,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 11,
@@ -360,49 +299,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   viewAll: {
-    fontSize: 13,
-    color: Colors.primary,
-    fontWeight: '600',
-  },
-  casesList: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-  },
-  caseItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.borderLight,
-  },
-  caseItemLast: {
-    borderBottomWidth: 0,
-  },
-  caseLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  caseTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 3,
-  },
-  caseMeta: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  caseBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  caseBadgeText: {
-    fontSize: 12,
+    color: Colors.primary,
     fontWeight: '600',
   },
 });
