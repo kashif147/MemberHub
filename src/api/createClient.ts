@@ -15,6 +15,10 @@ export const createAuthedClient = (baseURL: string): AxiosInstance => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Let RN set multipart boundary — same as Portal_App issue_request.
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   });
 

@@ -1,67 +1,47 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   FlatList,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSelector } from 'react-redux';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
+import { loadCasesList } from '../services/issues.services';
+import { STACKS } from '../enums/ScreenEnums';
+import type { CasesStackParamList } from '../navigation/CasesStack';
+import type { CaseItem, CaseStatus } from '../data/mockCases';
+import type { RootState } from '../store';
 
-const CASES = [
-  {
-    id: '1',
-    category: 'PAY & CONDITIONS',
-    title: 'Unpaid overtime – August roster',
-    caseNo: 'CS-24018',
-    member: 'Ciarán Doyle',
-    date: '12 Sep 2026',
-    status: 'In progress',
-  },
-  {
-    id: '2',
-    category: 'HEALTH & SAFETY',
-    title: 'ED staffing levels on nights',
-    caseNo: 'CS-24031',
-    member: 'Aoife Brennan',
-    date: '22 Sep 2026',
-    status: 'Open',
-  },
-  {
-    id: '3',
-    category: 'WORKPLACE ISSUE',
-    title: 'Annual leave refusal',
-    caseNo: 'CS-23977',
-    member: 'Maria Santos',
-    date: '28 Aug 2026',
-    status: 'Closed',
-  },
-  {
-    id: '4',
-    category: 'BULLYING & HARASSMENT',
-    title: 'Conduct of shift lead',
-    caseNo: 'CS-24040',
-    member: 'Tomás Walsh',
-    date: '26 Sep 2026',
-    status: 'Open',
-  },
-];
-
-const FILTER_TABS = ['All', 'Open', 'In progress', 'Closed'];
-
-type CaseStatus = 'In progress' | 'Open' | 'Closed';
+const FILTER_TABS = ['All', 'Open', 'In progress', 'Closed'] as const;
 
 const StatusBadge = ({ status }: { status: CaseStatus }) => {
   const getStyle = () => {
     switch (status) {
       case 'In progress':
-        return { bg: Colors.statusInProgressBg, text: Colors.statusInProgress, bordered: false };
+        return {
+          bg: Colors.statusInProgressBg,
+          text: Colors.statusInProgress,
+          bordered: false,
+        };
       case 'Open':
-        return { bg: Colors.surface, text: Colors.primary, bordered: true };
+        return {
+          bg: Colors.surface,
+          text: Colors.primary,
+          bordered: true,
+        };
       case 'Closed':
-        return { bg: Colors.statusClosedBg, text: Colors.statusClosed, bordered: false };
+        return {
+          bg: Colors.statusClosedBg,
+          text: Colors.statusClosed,
+          bordered: false,
+        };
     }
   };
   const s = getStyle();
@@ -69,38 +49,88 @@ const StatusBadge = ({ status }: { status: CaseStatus }) => {
     <View
       style={[
         styles.badge,
-        { backgroundColor: s.bg, borderWidth: s.bordered ? 1 : 0, borderColor: Colors.border },
+        {
+          backgroundColor: s.bg,
+          borderWidth: s.bordered ? 1 : 0,
+          borderColor: Colors.border,
+        },
       ]}>
       <Text style={[styles.badgeText, { color: s.text }]}>{status}</Text>
     </View>
   );
 };
 
-const CaseCard = ({ item }: { item: (typeof CASES)[0] }) => (
-  <TouchableOpacity style={styles.caseCard} activeOpacity={0.75}>
+const CaseCard = ({
+  item,
+  onPress,
+}: {
+  item: CaseItem;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    style={styles.caseCard}
+    activeOpacity={0.75}
+    onPress={onPress}>
     <View style={styles.caseCardHeader}>
-      <Text style={styles.caseCategory}>{item.category}</Text>
-      <StatusBadge status={item.status as CaseStatus} />
+      <Text style={styles.caseCategory} numberOfLines={1}>
+        {item.category}
+      </Text>
+      <StatusBadge status={item.status} />
     </View>
-    <Text style={styles.caseTitle}>{item.title}</Text>
-    <Text style={styles.caseMeta}>
+    <Text style={styles.caseTitle} numberOfLines={2}>
+      {item.title}
+    </Text>
+    <Text style={styles.caseMeta} numberOfLines={1}>
       {item.caseNo} · {item.member} · {item.date}
     </Text>
   </TouchableOpacity>
 );
 
 const CasesScreen = () => {
-  const [activeTab, setActiveTab] = useState('All');
+  const navigation =
+    useNavigation<NativeStackNavigationProp<CasesStackParamList>>();
+  const user = useSelector((s: RootState) => s.auth.user);
+  const [activeTab, setActiveTab] = useState<(typeof FILTER_TABS)[number]>('All');
+  const [cases, setCases] = useState<CaseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = CASES.filter(
-    c => activeTab === 'All' || c.status === activeTab,
+  const role = user?.role || 'Branch Officer';
+  const branch = user?.branches || 'Beaumont & Mater branches';
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const rows = await loadCasesList();
+      setCases(rows);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load cases');
+      setCases([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load(false);
+    }, [load]),
+  );
+
+  const filtered = useMemo(
+    () =>
+      cases.filter(c => activeTab === 'All' || c.status === activeTab),
+    [cases, activeTab],
   );
 
   return (
     <View style={styles.screen}>
-      <Header title="Cases" />
+      <Header title="Cases" role={role} branch={branch} />
       <View style={styles.content}>
-        {/* Filter Tabs */}
         <View style={styles.tabRow}>
           {FILTER_TABS.map(tab => (
             <TouchableOpacity
@@ -119,13 +149,58 @@ const CasesScreen = () => {
           ))}
         </View>
 
-        <FlatList
-          data={filtered}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => <CaseCard item={item} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={Colors.primary} />
+            <Text style={styles.centerText}>Loading cases…</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <CaseCard
+                item={item}
+                onPress={() =>
+                  navigation.navigate(STACKS.CASE_DETAIL, {
+                    issueId: item.id,
+                    title: item.caseNo,
+                  })
+                }
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.listContent,
+              filtered.length === 0 && styles.listEmpty,
+            ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => load(true)}
+                tintColor={Colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <Text style={styles.centerText}>
+                  {error ||
+                    (activeTab === 'All'
+                      ? 'No cases yet.'
+                      : `No ${activeTab.toLowerCase()} cases.`)}
+                </Text>
+                {error ? (
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={() => load(false)}
+                    activeOpacity={0.8}>
+                    <Text style={styles.retryText}>Retry</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            }
+          />
+        )}
       </View>
     </View>
   );
@@ -177,6 +252,35 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 30,
   },
+  listEmpty: {
+    flexGrow: 1,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 10,
+    minHeight: 180,
+  },
+  centerText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    marginTop: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+  },
+  retryText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
   caseCard: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
@@ -192,8 +296,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+    gap: 8,
   },
   caseCategory: {
+    flex: 1,
     fontSize: 11,
     fontWeight: '600',
     color: Colors.primary,

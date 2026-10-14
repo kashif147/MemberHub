@@ -11,7 +11,7 @@ import {
 } from 'lucide-react-native';
 import HomeStack from './HomeStack';
 import MembersStack from './MembersStack';
-import CasesScreen from '../screens/CasesScreen';
+import CasesStack from './CasesStack';
 import MoreScreen from '../screens/MoreScreen';
 import CreateSheet from '../components/CreateSheet';
 import { Colors } from '../theme/colors';
@@ -115,9 +115,17 @@ function CustomTabBar({ state, navigation }: any) {
       <CreateSheet
         visible={createVisible}
         onClose={() => setCreateVisible(false)}
+        onNewCase={() => {
+          navigation.navigate(STACKS.CASES, {
+            screen: STACKS.NEW_CASE,
+          });
+        }}
         onRegisterMember={() => {
-          setCreateVisible(false);
-          // Navigate into Home tab stack → Membership Drive
+          navigation.navigate(STACKS.HOME, {
+            screen: STACKS.MEMBERSHIP_DRIVE,
+          });
+        }}
+        onNewDrive={() => {
           navigation.navigate(STACKS.HOME, {
             screen: STACKS.MEMBERSHIP_DRIVE,
           });
@@ -137,7 +145,7 @@ const TabNavigation = () => (
     }}>
     <Tab.Screen name={STACKS.HOME} component={HomeStack} />
     <Tab.Screen name={STACKS.MEMBERS} component={MembersStack} />
-    <Tab.Screen name={STACKS.CASES} component={CasesScreen} />
+    <Tab.Screen name={STACKS.CASES} component={CasesStack} />
     <Tab.Screen name={STACKS.MORE} component={MoreScreen} />
   </Tab.Navigator>
 );

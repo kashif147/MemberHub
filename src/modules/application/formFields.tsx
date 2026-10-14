@@ -25,7 +25,7 @@ export const FieldLabel = ({
   </Text>
 );
 
-/** Portal_App-style card section (white card, shadow, titled). */
+/** Titled form section (no card chrome). */
 export const FormSection = ({
   title,
   children,
@@ -33,8 +33,8 @@ export const FormSection = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <View style={styles.card}>
-    <Text style={styles.cardTitle}>{title}</Text>
+  <View style={styles.section}>s
+    <Text style={styles.sectionTitle}>{title}</Text>
     {children}
   </View>
 );
@@ -267,28 +267,15 @@ export const FieldCol = ({ children }: { children: React.ReactNode }) => (
 );
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface,
-    marginBottom: 16,
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+  section: {
+    marginBottom: 20,
   },
-  cardTitle: {
+  sectionTitle: {
     color: Colors.textPrimary,
     fontWeight: '700',
     fontSize: 20,
     marginBottom: 16,
     letterSpacing: 0.2,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   label: {
     fontSize: 13,

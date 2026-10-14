@@ -11,6 +11,7 @@ import { Colors } from '../../theme/colors';
 import { getMemberById } from '../../data/mockMembers';
 import { getCasesForMember } from '../../data/mockCases';
 import { Header } from '../../components/Header';
+import { STACKS } from '../../enums/ScreenEnums';
 import type { Member } from '../../data/mockMembers';
 
 type RouteParams = {
@@ -224,7 +225,14 @@ const MemberDetailScreen = () => {
           <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8}>
             <Text style={styles.actionText}>Call</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            activeOpacity={0.8}
+            onPress={() =>
+              navigation.getParent()?.navigate(STACKS.CASES, {
+                screen: STACKS.NEW_CASE,
+              })
+            }>
             <Text style={styles.actionText}>New case</Text>
           </TouchableOpacity>
         </View>

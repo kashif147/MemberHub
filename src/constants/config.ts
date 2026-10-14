@@ -25,6 +25,13 @@ export const PROFILE_SERVICE_URL =
 export const SUBSCRIPTION_SERVICE_URL =
   'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/subscription-service/api/v1';
 
+/**
+ * Issue / complaints service — same host pattern as ProjectShell-1
+ * REACT_APP_ISSUE_SERVICE_URL (sibling of profile-service).
+ */
+export const ISSUE_SERVICE_URL =
+  'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/issue-service/api';
+
 /** System-default Members grid template (CRM /members filter). */
 export const MEMBERS_FILTER_TEMPLATE_ID = '69ec6b70ed31fde95f0d478e';
 
