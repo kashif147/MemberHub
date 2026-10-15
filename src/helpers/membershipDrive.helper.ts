@@ -14,11 +14,6 @@ export type MembershipDrive = {
   createdAt: string;
 };
 
-export const DEFAULT_DRIVES = [
-  'Beaumont ED – Autumn drive',
-  'Mater campus – Winter drive',
-];
-
 export const DRIVE_TYPE_OPTIONS = [
   'Workplace walkabout',
   'New graduates',
@@ -59,17 +54,6 @@ export const saveMembershipDrive = async (
   const updated = [next, ...existing.filter(d => d.id !== next.id)];
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   return next;
-};
-
-/** Names for the drive picker — created first, then demos. */
-export const getDrivePickerNames = async (): Promise<string[]> => {
-  const stored = await loadMembershipDrives();
-  const names = stored.map(d => d.name).filter(Boolean);
-  const merged = [...names];
-  DEFAULT_DRIVES.forEach(d => {
-    if (!merged.includes(d)) merged.push(d);
-  });
-  return merged;
 };
 
 export const toIsoStartOfDay = (date = new Date()) => {

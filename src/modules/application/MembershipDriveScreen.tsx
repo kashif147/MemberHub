@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import {
   useFocusEffect,
@@ -13,16 +14,13 @@ import {
   useRoute,
   type RouteProp,
 } from '@react-navigation/native';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { UserPlus, ChevronDown, Search } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
-import {
-  DEFAULT_DRIVES,
-  getDrivePickerNames,
-} from '../../helpers/membershipDrive.helper';
-import type { RootState } from '../../store';
+import { refreshMeProfile } from '../../services/auth.services';
+import type { AppDispatch, RootState } from '../../store';
 import type { HomeStackParamList } from '../../navigation/HomeStack';
 
 const SIGNUPS_TODAY = [
@@ -33,42 +31,58 @@ const SIGNUPS_TODAY = [
 
 /**
  * Membership drive hub — Figma layout.
- * "New member application" opens the 3-step application form.
+ * Drive picker lists work locations from /me assignedLocations.
  */
 const MembershipDriveScreen = () => {
   const navigation = useNavigation<any>();
   const route =
     useRoute<RouteProp<HomeStackParamList, typeof STACKS.MEMBERSHIP_DRIVE>>();
+  const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
-  const [drives, setDrives] = useState<string[]>(DEFAULT_DRIVES);
-  const [drive, setDrive] = useState(DEFAULT_DRIVES[0]);
+  const [drive, setDrive] = useState('');
   const [driveOpen, setDriveOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [loadingLocations, setLoadingLocations] = useState(false);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
 
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        const names = await getDrivePickerNames();
-        if (cancelled) return;
-        setDrives(names);
-        const preferred = route.params?.driveName;
-        if (preferred && names.includes(preferred)) {
-          setDrive(preferred);
-        } else if (!names.includes(drive)) {
-          setDrive(names[0] || DEFAULT_DRIVES[0]);
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [route.params?.driveName]),
+  const locations = useMemo(
+    () => user?.workLocations || [],
+    [user?.workLocations],
   );
 
+  const ensureLocations = useCallback(async () => {
+    if (user?.workLocations?.length) return;
+    setLoadingLocations(true);
+    try {
+      await dispatch(refreshMeProfile());
+    } finally {
+      setLoadingLocations(false);
+    }
+  }, [dispatch, user?.workLocations?.length]);
+
+  useFocusEffect(
+    useCallback(() => {
+      ensureLocations();
+    }, [ensureLocations]),
+  );
+
+  useEffect(() => {
+    if (!locations.length) {
+      setDrive('');
+      return;
+    }
+    const preferred = route.params?.driveName;
+    if (preferred && locations.includes(preferred)) {
+      setDrive(preferred);
+      return;
+    }
+    setDrive(prev => (prev && locations.includes(prev) ? prev : locations[0]));
+  }, [locations, route.params?.driveName]);
+
   const openApplication = () => {
+    if (!drive) return;
     navigation.navigate(STACKS.APPLICATION_FORM, { driveName: drive });
   };
 
@@ -93,33 +107,56 @@ const MembershipDriveScreen = () => {
         <TouchableOpacity
           style={styles.driveSelect}
           activeOpacity={0.8}
-          onPress={() => setDriveOpen(v => !v)}>
-          <Text style={styles.driveSelectText} numberOfLines={1}>
-            {drive}
+          disabled={!locations.length}
+          onPress={() => {
+            if (locations.length) setDriveOpen(v => !v);
+          }}>
+          <Text
+            style={[
+              styles.driveSelectText,
+              !drive && styles.driveSelectPlaceholder,
+            ]}
+            numberOfLines={1}>
+            {drive ||
+              (loadingLocations
+                ? 'Loading locations…'
+                : 'Select a work location')}
           </Text>
-          <ChevronDown size={18} color={Colors.textMuted} strokeWidth={2} />
+          {loadingLocations ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <ChevronDown size={18} color={Colors.textMuted} strokeWidth={2} />
+          )}
         </TouchableOpacity>
 
-        {driveOpen ? (
+        {driveOpen && locations.length > 0 ? (
           <View style={styles.driveMenu}>
-            {drives.map(d => (
+            {locations.map(loc => (
               <TouchableOpacity
-                key={d}
+                key={loc}
                 style={styles.driveOption}
                 onPress={() => {
-                  setDrive(d);
+                  setDrive(loc);
                   setDriveOpen(false);
-                }}>
+                }}
+                activeOpacity={0.7}>
                 <Text
                   style={[
                     styles.driveOptionText,
-                    d === drive && styles.driveOptionActive,
+                    loc === drive && styles.driveOptionActive,
                   ]}>
-                  {d}
+                  {loc}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+        ) : null}
+
+        {!loadingLocations && locations.length === 0 ? (
+          <Text style={styles.emptyLocations}>
+            No work locations on your profile. Locations come from /me
+            assignedLocations.
+          </Text>
         ) : null}
 
         {/* Stats — Figma */}
@@ -154,9 +191,10 @@ const MembershipDriveScreen = () => {
         </View>
 
         <TouchableOpacity
-          style={styles.primaryBtn}
+          style={[styles.primaryBtn, !drive && styles.primaryBtnDisabled]}
           activeOpacity={0.85}
-          onPress={openApplication}>
+          onPress={openApplication}
+          disabled={!drive}>
           <UserPlus size={18} color={Colors.primary} strokeWidth={2.2} />
           <Text style={styles.primaryBtnText}>New member application</Text>
         </TouchableOpacity>
@@ -206,35 +244,45 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   driveSelectText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.textPrimary,
     marginRight: 8,
+  },
+  driveSelectPlaceholder: {
+    fontWeight: '500',
+    color: Colors.textMuted,
   },
   driveMenu: {
     backgroundColor: Colors.surface,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginTop: -6,
     marginBottom: 14,
     overflow: 'hidden',
   },
   driveOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   driveOptionText: {
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textSecondary,
+    fontWeight: '500',
   },
   driveOptionActive: {
     color: Colors.primary,
     fontWeight: '700',
+  },
+  emptyLocations: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: 14,
   },
   statsRow: {
     flexDirection: 'row',
@@ -300,6 +348,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     borderRadius: 14,
     paddingVertical: 14,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.5,
   },
   primaryBtnText: {
     fontSize: 15,
