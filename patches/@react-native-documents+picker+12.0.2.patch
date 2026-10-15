@@ -1,0 +1,23 @@
+diff --git a/node_modules/@react-native-documents/picker/ios/swift/PickerBase.swift b/node_modules/@react-native-documents/picker/ios/swift/PickerBase.swift
+index 05304e1..48bbe3b 100644
+--- a/node_modules/@react-native-documents/picker/ios/swift/PickerBase.swift
++++ b/node_modules/@react-native-documents/picker/ios/swift/PickerBase.swift
+@@ -50,11 +50,16 @@ public class PickerBase: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentat
+   }
+ 
+   public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+-    promiseWrapper.rejectAsUserCancelledOperation()
++    // Delay so a successful Open's didPick can settle first (iOS 17+ sheet race).
++    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
++      self?.promiseWrapper.rejectAsUserCancelledOperation()
++    }
+   }
+ 
+   public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+-    promiseWrapper.rejectAsUserCancelledOperation()
++    // Do NOT reject here. On iOS 17+, Open dismisses the sheet and this fires
++    // before/alongside didPick, which was cancelling successful picks.
++    // Real cancels still hit documentPickerWasCancelled.
+   }
+ 
+ }

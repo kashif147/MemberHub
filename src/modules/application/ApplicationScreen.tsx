@@ -292,61 +292,61 @@ const ApplicationScreen = () => {
   };
 
   const savePersonalStep = async () => {
-    const payload = buildPersonalPayload(formData.personalInfo);
-    setStepLoading(true);
-    try {
-      const res = applicationId
-        ? await updatePersonalDetailRequest(applicationId, payload)
-        : await createPersonalDetailRequest(payload);
+    // const payload = buildPersonalPayload(formData.personalInfo);
+    // setStepLoading(true);
+    // try {
+    //   const res = applicationId
+    //     ? await updatePersonalDetailRequest(applicationId, payload)
+    //     : await createPersonalDetailRequest(payload);
 
-      if (!(res?.status >= 200 && res?.status < 300)) {
-        throw new Error(
-          extractApiError(res, 'Unable to save personal details'),
-        );
-      }
+    //   if (!(res?.status >= 200 && res?.status < 300)) {
+    //     throw new Error(
+    //       extractApiError(res, 'Unable to save personal details'),
+    //     );
+    //   }
 
-      const id = extractApplicationId(res) || applicationId;
-      if (id) setApplicationId(id);
+    //   const id = extractApplicationId(res) || applicationId;
+    //   if (id) setApplicationId(id);
       advanceStep();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Unable to save personal details');
-    } finally {
-      setStepLoading(false);
-    }
+    // } catch (e: any) {
+    //   Alert.alert('Error', e?.message || 'Unable to save personal details');
+    // } finally {
+    //   setStepLoading(false);
+    // }
   };
 
   const saveProfessionalStep = async () => {
-    if (!applicationId) {
-      Alert.alert('Error', 'Missing application id. Re-save personal details.');
-      return;
-    }
-    const payload = buildProfessionalPayload(formData.professionalDetails);
-    setStepLoading(true);
-    try {
-      let res = hasProfessional
-        ? await updateProfessionalDetailRequest(applicationId, payload)
-        : await createProfessionalDetailRequest(applicationId, payload);
+    // if (!applicationId) {
+    //   Alert.alert('Error', 'Missing application id. Re-save personal details.');
+    //   return;
+    // }
+    // const payload = buildProfessionalPayload(formData.professionalDetails);
+    // setStepLoading(true);
+    // try {
+    //   let res = hasProfessional
+    //     ? await updateProfessionalDetailRequest(applicationId, payload)
+    //     : await createProfessionalDetailRequest(applicationId, payload);
 
-      // CRM ApplicationMgtDrawer: PUT then fallback POST (or reverse)
-      if (!(res?.status >= 200 && res?.status < 300)) {
-        res = hasProfessional
-          ? await createProfessionalDetailRequest(applicationId, payload)
-          : await updateProfessionalDetailRequest(applicationId, payload);
-      }
+    //   // CRM ApplicationMgtDrawer: PUT then fallback POST (or reverse)
+    //   if (!(res?.status >= 200 && res?.status < 300)) {
+    //     res = hasProfessional
+    //       ? await createProfessionalDetailRequest(applicationId, payload)
+    //       : await updateProfessionalDetailRequest(applicationId, payload);
+    //   }
 
-      if (!(res?.status >= 200 && res?.status < 300)) {
-        throw new Error(
-          extractApiError(res, 'Unable to save professional details'),
-        );
-      }
+    //   if (!(res?.status >= 200 && res?.status < 300)) {
+    //     throw new Error(
+    //       extractApiError(res, 'Unable to save professional details'),
+    //     );
+    //   }
 
-      setHasProfessional(true);
+    //   setHasProfessional(true);
       advanceStep();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Unable to save professional details');
-    } finally {
-      setStepLoading(false);
-    }
+    // } catch (e: any) {
+    //   Alert.alert('Error', e?.message || 'Unable to save professional details');
+    // } finally {
+    //   setStepLoading(false);
+    // }
   };
 
   const saveSubscriptionStep = async () => {

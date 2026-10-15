@@ -27,7 +27,11 @@ import {
   loadCaseLookups,
   type PendingAttachment,
 } from '../../services/issues.services';
-import { pickCaseAttachments } from '../../helpers/documentPicker.helper';
+import {
+  pickCaseAttachmentsFromSource,
+  type AttachSource,
+} from '../../helpers/documentPicker.helper';
+import { chooseAttachSource } from '../../helpers/attachSource.helper';
 import { toSelectOptions } from '../../helpers/issuePayload.helper';
 import { Colors } from '../../theme/colors';
 import type { Member } from '../../data/mockMembers';
@@ -105,10 +109,9 @@ const NewCaseScreen = () => {
   const errType = showValidation && !complaintType;
   const errDesc = showValidation && !description.trim();
 
-  /** Same picker flow as Portal_App CreateCase — PDF, images, DOCX. */
-  const onUploadPress = async () => {
+  const onAttachSource = async (source: AttachSource) => {
     try {
-      const next = await pickCaseAttachments();
+      const next = await pickCaseAttachmentsFromSource(source);
       if (!next) return;
       if (!next.length) {
         Alert.alert(
@@ -125,6 +128,9 @@ const NewCaseScreen = () => {
       );
     }
   };
+
+  /** ActionSheet/Alert — not RN Modal (Modal breaks iOS document Open). */
+  const onUploadPress = () => chooseAttachSource(onAttachSource);
 
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));

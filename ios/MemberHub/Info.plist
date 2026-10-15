@@ -44,6 +44,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>MemberHub needs camera access to attach photos to cases.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MemberHub needs photo library access to attach images to cases.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MemberHub may use the microphone when recording video for case attachments.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>RCTNewArchEnabled</key>

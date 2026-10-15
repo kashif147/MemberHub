@@ -204,3 +204,29 @@ export const createNewCase = async (
 
   return { created, failedUploads };
 };
+
+/** Portal CaseDetail — upload one or more files to an existing issue. */
+export const uploadCaseAttachments = async (
+  issueId: string,
+  files: PendingAttachment[],
+) => {
+  if (!issueId) throw new Error('Missing case id');
+  const failedUploads: string[] = [];
+  for (const file of files) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const uploadRes = await uploadIssueAttachmentRequest(issueId, file);
+      if (!(uploadRes.status >= 200 && uploadRes.status < 300)) {
+        failedUploads.push(file.name);
+      }
+    } catch {
+      failedUploads.push(file.name);
+    }
+  }
+  if (failedUploads.length === files.length && files.length > 0) {
+    throw new Error(
+      `Failed to upload: ${failedUploads.join(', ')}`,
+    );
+  }
+  return { failedUploads };
+};

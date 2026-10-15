@@ -1,6 +1,10 @@
+import { NativeModules, Platform } from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+
 /**
- * Lazy-load @react-native-documents/picker (same as Portal_App CreateCase).
- * Uses package `types` so iOS gets UTIs (PDF = com.adobe.pdf) and Android gets MIME.
+ * Camera / Photos: react-native-image-picker.
+ * Files (iOS): DocumentAttach (retained session, fullScreen).
+ * Files (Android): @react-native-documents/picker.
  */
 export type PickedDocument = {
   uri: string;
@@ -8,7 +12,15 @@ export type PickedDocument = {
   type: string;
 };
 
-const isCanceled = (err: any, picker: any) => {
+export type AttachSource = 'camera' | 'photos' | 'files';
+
+const isCanceled = (err: any, picker?: any) => {
+  const code = String(err?.code || '');
+  if (code.includes('CANCELED') || code === 'OPERATION_CANCELED') return true;
+  const msg = String(err?.message || '').toLowerCase();
+  if (msg.includes('cancel') || msg.includes('canceled') || msg.includes('cancelled')) {
+    return true;
+  }
   try {
     return (
       picker?.isErrorWithCode?.(err) &&
@@ -17,15 +29,6 @@ const isCanceled = (err: any, picker: any) => {
   } catch {
     return false;
   }
-};
-
-const isMissingNativeModule = (err: any) => {
-  const msg = String(err?.message || err || '');
-  return (
-    msg.includes('RNDocumentPicker') ||
-    msg.includes('could not be found') ||
-    msg.includes('TurboModuleRegistry')
-  );
 };
 
 const loadPicker = () => {
@@ -38,10 +41,9 @@ const loadPicker = () => {
   return picker;
 };
 
-/** Infer MIME when iOS returns a UTI / null type. */
 const mimeFromFile = (file: any): string => {
   const raw = String(file?.type || file?.nativeType || '').toLowerCase();
-  const name = String(file?.name || '').toLowerCase();
+  const name = String(file?.name || file?.fileName || '').toLowerCase();
 
   if (raw.includes('pdf') || name.endsWith('.pdf')) return 'application/pdf';
   if (raw.includes('png') || name.endsWith('.png')) return 'image/png';
@@ -66,54 +68,161 @@ const mimeFromFile = (file: any): string => {
   return 'application/octet-stream';
 };
 
-export async function pickCaseAttachments(): Promise<PickedDocument[] | null> {
-  let picker: any;
+const normalizeFileUri = (uri: string) => {
+  const value = String(uri || '').trim();
+  if (!value) return '';
+  if (value.startsWith('file://') || value.startsWith('content://')) return value;
+  if (value.startsWith('/')) return `file://${value}`;
+  return value;
+};
+
+const mapPicked = (files: any[]): PickedDocument[] =>
+  (files || [])
+    .map((f: any) => ({
+      uri: normalizeFileUri(
+        f?.uri || f?.fileCopyUri || f?.localUri || f?.path || '',
+      ),
+      name: String(f?.name || f?.fileName || 'attachment.pdf'),
+      type: mimeFromFile(f),
+    }))
+    .filter((f: PickedDocument) => Boolean(f.uri));
+
+const mapImageAssets = (assets: any[] | undefined): PickedDocument[] =>
+  (assets || [])
+    .filter((a: any) => a?.uri)
+    .map((a: any, index: number) => {
+      const uri = String(a.uri);
+      const ext =
+        a.type === 'image/png' || uri.toLowerCase().includes('.png')
+          ? 'png'
+          : 'jpg';
+      const name =
+        String(a.fileName || '').trim() ||
+        `photo_${Date.now()}_${index}.${ext}`;
+      return { uri, name, type: mimeFromFile({ ...a, name }) };
+    });
+
+/** iOS — custom native picker (no RN Modal, fullScreen, retained delegate). */
+async function pickWithDocumentAttach(): Promise<PickedDocument[] | null> {
+  const mod = NativeModules.DocumentAttach;
+  if (!mod?.pick) {
+    throw new Error('DocumentAttach unavailable — rebuild the iOS app.');
+  }
   try {
-    picker = loadPicker();
-  } catch (err) {
-    if (isMissingNativeModule(err)) {
-      throw new Error(
-        'Document picker is not linked in this build. Rebuild the app (npx react-native run-ios / run-android).',
-      );
-    }
+    const results = await mod.pick({});
+    return mapPicked(Array.isArray(results) ? results : []);
+  } catch (err: any) {
+    if (isCanceled(err)) return null;
     throw err;
   }
+}
 
-  const { types } = picker;
-  // Platform-correct: PDF / images / DOCX (iOS UTIs + Android MIME)
+async function pickWithDocumentsPackage(): Promise<PickedDocument[] | null> {
+  const picker = loadPicker();
+  const { types, keepLocalCopy } = picker;
   const type = types
-    ? [types.pdf, types.images, types.docx].filter(Boolean)
-    : [
-        'application/pdf',
-        'image/*',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
+    ? [types.pdf, types.images, types.docx, types.allFiles].filter(Boolean)
+    : ['public.item'];
 
   try {
     const results = await picker.pick({
       type,
       allowMultiSelection: true,
       mode: 'import',
+      presentationStyle: 'fullScreen',
     });
 
-    const mapped = (Array.isArray(results) ? results : [])
-      .filter((f: any) => f?.uri)
-      .map((f: any) => ({
-        uri: String(f.uri),
-        name: String(f.name || 'attachment.pdf'),
-        type: mimeFromFile(f),
-      }));
+    let files = Array.isArray(results) ? results : [];
 
-    return mapped;
+    if (typeof keepLocalCopy === 'function' && files.length) {
+      try {
+        const copied = await keepLocalCopy({
+          files: files.map((f: any) => ({
+            uri: f.uri,
+            fileName: f.name || 'attachment',
+          })),
+          destination: 'cachesDirectory',
+        });
+        if (Array.isArray(copied) && copied.length) {
+          files = copied.map((c: any, i: number) => ({
+            ...files[i],
+            uri:
+              c?.status === 'success'
+                ? c?.localUri || c?.uri || files[i]?.uri
+                : files[i]?.uri,
+            name: c?.fileName || files[i]?.name,
+          }));
+        }
+      } catch {
+        // keep original
+      }
+    }
+
+    return mapPicked(files);
   } catch (err) {
-    if (isCanceled(err, picker)) {
-      return null;
-    }
-    if (isMissingNativeModule(err)) {
-      throw new Error(
-        'Document picker is not linked in this build. Rebuild the app (npx react-native run-ios / run-android).',
-      );
-    }
+    if (isCanceled(err, picker)) return null;
     throw err;
   }
+}
+
+export async function pickCaseAttachmentsFromFiles(): Promise<
+  PickedDocument[] | null
+> {
+  // iOS: DocumentAttach only (avoids documents-picker cancel race entirely)
+  if (Platform.OS === 'ios') {
+    if (!NativeModules.DocumentAttach?.pick) {
+      throw new Error(
+        'DocumentAttach native module missing. Run yarn ios to rebuild.',
+      );
+    }
+    return pickWithDocumentAttach();
+  }
+
+  return pickWithDocumentsPackage();
+}
+
+export async function pickCaseAttachmentsFromCamera(): Promise<
+  PickedDocument[] | null
+> {
+  const result = await launchCamera({
+    mediaType: 'photo',
+    quality: 0.8,
+    saveToPhotos: false,
+    includeBase64: false,
+  });
+  if (result.didCancel) return null;
+  if (result.errorCode) {
+    throw new Error(result.errorMessage || 'Unable to open camera.');
+  }
+  const mapped = mapImageAssets(result.assets);
+  return mapped.length ? mapped : null;
+}
+
+export async function pickCaseAttachmentsFromPhotos(): Promise<
+  PickedDocument[] | null
+> {
+  const result = await launchImageLibrary({
+    mediaType: 'photo',
+    quality: 0.8,
+    selectionLimit: 5,
+    includeBase64: false,
+  });
+  if (result.didCancel) return null;
+  if (result.errorCode) {
+    throw new Error(result.errorMessage || 'Unable to open photo library.');
+  }
+  const mapped = mapImageAssets(result.assets);
+  return mapped.length ? mapped : null;
+}
+
+export async function pickCaseAttachmentsFromSource(
+  source: AttachSource,
+): Promise<PickedDocument[] | null> {
+  if (source === 'camera') return pickCaseAttachmentsFromCamera();
+  if (source === 'photos') return pickCaseAttachmentsFromPhotos();
+  return pickCaseAttachmentsFromFiles();
+}
+
+export async function pickCaseAttachments(): Promise<PickedDocument[] | null> {
+  return pickCaseAttachmentsFromFiles();
 }

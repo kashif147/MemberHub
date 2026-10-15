@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import {
   useFocusEffect,
@@ -15,15 +16,21 @@ import {
   type RouteProp,
 } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
-import { ChevronDown, ChevronUp, Paperclip } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Paperclip, Plus } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import {
   loadCaseDetail,
+  uploadCaseAttachments,
   type CaseActivityItem,
   type CaseAttachmentItem,
   type CaseDetailBundle,
   type CaseHistoryItem,
 } from '../../services/issues.services';
+import {
+  pickCaseAttachmentsFromSource,
+  type AttachSource,
+} from '../../helpers/documentPicker.helper';
+import { chooseAttachSource } from '../../helpers/attachSource.helper';
 import { displayValue, formatIssueEnumLabel } from '../../helpers/cases.helper';
 import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
@@ -126,9 +133,11 @@ const CaseDetailScreen = () => {
   const [attachmentsOpen, setAttachmentsOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
+  const isClosed = bundle?.issue?.issueStatusUi === 'Closed';
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -159,6 +168,33 @@ const CaseDetailScreen = () => {
       load(false);
     }, [load]),
   );
+
+  /** Same as Portal_App CaseDetail upload — ActionSheet, not RN Modal. */
+  const onAttachSource = async (source: AttachSource) => {
+    if (!issueId || uploadingAttachment) return;
+    try {
+      const next = await pickCaseAttachmentsFromSource(source);
+      if (!next?.length) return;
+      setUploadingAttachment(true);
+      const { failedUploads } = await uploadCaseAttachments(issueId, next);
+      await load(true);
+      if (failedUploads.length) {
+        Alert.alert(
+          'Attachments',
+          `Some files failed to upload: ${failedUploads.join(', ')}`,
+        );
+      }
+    } catch (err: any) {
+      Alert.alert(
+        'Attachments',
+        err?.message || 'Failed to upload attachment',
+      );
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const onUploadPress = () => chooseAttachSource(onAttachSource);
 
   if (loading) {
     return (
@@ -292,6 +328,25 @@ const CaseDetailScreen = () => {
               </View>
             ))
           )}
+
+          <TouchableOpacity
+            style={[
+              styles.uploadZone,
+              (isClosed || uploadingAttachment) && styles.uploadZoneDisabled,
+            ]}
+            onPress={onUploadPress}
+            disabled={isClosed || uploadingAttachment}
+            activeOpacity={0.75}>
+            {uploadingAttachment ? (
+              <ActivityIndicator color={Colors.primary} />
+            ) : (
+              <Paperclip size={22} color={Colors.primary} strokeWidth={2} />
+            )}
+            <Text style={styles.uploadTitle}>
+              {uploadingAttachment ? 'Uploading…' : 'Upload files'}
+            </Text>
+            <Text style={styles.uploadHint}>PDF, PNG, JPEG or DOCX</Text>
+          </TouchableOpacity>
         </SectionCard>
 
         <SectionCard
@@ -337,6 +392,21 @@ const CaseDetailScreen = () => {
           )}
         </SectionCard>
       </ScrollView>
+
+      {!isClosed ? (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={onUploadPress}
+          disabled={uploadingAttachment}
+          activeOpacity={0.85}
+          accessibilityLabel="Upload attachment">
+          {uploadingAttachment ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <Plus size={26} color={Colors.white} strokeWidth={2.4} />
+          )}
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };
@@ -344,7 +414,7 @@ const CaseDetailScreen = () => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 4 },
+  content: { paddingHorizontal: 16, paddingBottom: 88, paddingTop: 4 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -486,6 +556,48 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  uploadZone: {
+    marginTop: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: Colors.primaryMuted,
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 16,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  uploadZoneDisabled: {
+    opacity: 0.55,
+  },
+  uploadTitle: {
+    marginTop: 10,
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  uploadHint: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1A1A2E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   timelineCard: {
     backgroundColor: Colors.surfaceMuted,

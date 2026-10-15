@@ -31,6 +31,7 @@
     "react-native-gesture-handler": "^3.3.0",
     "react-native-get-random-values": "^2.0.0",
     "react-native-google-places-autocomplete": "^2.6.5",
+    "react-native-image-picker": "^8.3.0",
     "react-native-safe-area-context": "^5.10.1",
     "react-native-screens": "^4.28.0",
     "react-native-svg": "^15.15.5",

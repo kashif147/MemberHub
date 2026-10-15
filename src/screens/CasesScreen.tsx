@@ -13,7 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
-import { CaseListCard, CaseListRow } from '../components/CaseListRow';
+import { CaseCard } from '../components/CaseCard';
 import { loadCasesList } from '../services/issues.services';
 import { STACKS } from '../enums/ScreenEnums';
 import type { CasesStackParamList } from '../navigation/CasesStack';
@@ -122,24 +122,18 @@ const CasesScreen = () => {
                 ) : null}
               </View>
             ) : (
-              <CaseListCard>
-                {filtered.map((item, index) => (
-                  <CaseListRow
-                    key={item.id}
-                    title={item.title}
-                    caseNo={item.caseNo}
-                    member={item.member}
-                    status={item.status}
-                    last={index === filtered.length - 1}
-                    onPress={() =>
-                      navigation.navigate(STACKS.CASE_DETAIL, {
-                        issueId: item.id,
-                        title: item.caseNo,
-                      })
-                    }
-                  />
-                ))}
-              </CaseListCard>
+              filtered.map(item => (
+                <CaseCard
+                  key={item.id}
+                  item={item}
+                  onPress={() =>
+                    navigation.navigate(STACKS.CASE_DETAIL, {
+                      issueId: item.id,
+                      title: item.caseNo,
+                    })
+                  }
+                />
+              ))
             )}
           </ScrollView>
         )}
@@ -186,6 +180,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
+    gap: 5,
     paddingBottom: 30,
   },
   listEmpty: {
