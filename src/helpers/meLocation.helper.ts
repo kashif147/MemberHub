@@ -39,31 +39,82 @@ const firstNonEmpty = (...candidates: any[]): string[] => {
   return [];
 };
 
+export type MeWorkLocationRow = {
+  name: string;
+  branch: string;
+  region: string;
+};
+
 export type MeLocationScope = {
   workLocations: string[];
   branches: string[];
   regions: string[];
   /** Short label for header / "YOUR SCOPE" */
   scopeLabel: string;
+  /** Rich rows from assignedLocations.workLocations (branch/region per site). */
+  workLocationRows: MeWorkLocationRow[];
 };
+
+const branchFromWorkLocationItem = (item: any): string =>
+  asName(item?.parentLookupName) ||
+  asName(item?.Parentlookup) ||
+  asName(item?.parentLookup) ||
+  asName(item?.branch) ||
+  asName(item?.branchName) ||
+  asName(item?.branch?.DisplayName) ||
+  asName(item?.branch?.lookupname) ||
+  asName(item?.branch?.name) ||
+  '';
+
+const regionFromWorkLocationItem = (item: any): string =>
+  asName(item?.region) ||
+  asName(item?.regionName) ||
+  asName(item?.Region) ||
+  asName(item?.branch?.region) ||
+  asName(item?.branch?.region?.DisplayName) ||
+  asName(item?.branch?.region?.lookupname) ||
+  asName(item?.branch?.region?.name) ||
+  asName(item?.parentRegion) ||
+  asName(item?.ParentRegion) ||
+  '';
 
 /** Parent branch names from work-location rows (CRM /me assignedLocations). */
 const parentBranchesFromWorkLocations = (raw: any): string[] => {
   if (!Array.isArray(raw)) return [];
   return [
-    ...new Set(
-      raw
-        .map(
-          (item: any) =>
-            asName(item?.parentLookupName) ||
-            asName(item?.Parentlookup) ||
-            asName(item?.parentLookup) ||
-            asName(item?.branch) ||
-            asName(item?.branchName),
-        )
-        .filter(Boolean),
-    ),
+    ...new Set(raw.map(branchFromWorkLocationItem).filter(Boolean)),
   ];
+};
+
+/** Normalize assignedLocations.workLocations into name + branch + region rows. */
+export const mapMeWorkLocationRows = (raw: any): MeWorkLocationRow[] => {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const rows: MeWorkLocationRow[] = [];
+  raw.forEach((item: any) => {
+    const name = asName(item);
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      name,
+      branch: branchFromWorkLocationItem(item),
+      region: regionFromWorkLocationItem(item),
+    });
+  });
+  return rows.sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export const findMeWorkLocationRow = (
+  workLocation: string | undefined,
+  rows: MeWorkLocationRow[] = [],
+): MeWorkLocationRow | null => {
+  if (!workLocation || workLocation === 'other') return null;
+  const target = workLocation.trim().toLowerCase();
+  return (
+    rows.find(r => r.name.toLowerCase() === target) || null
+  );
 };
 
 /**
@@ -129,9 +180,15 @@ export const extractLocationScopeFromMe = (payload: any): MeLocationScope => {
     assignment.region,
   );
 
+  const workLocationRows = mapMeWorkLocationRows(assignedWorkLocations);
+  // Prefer names from rich rows when present (keeps order aligned with branch/region)
+  const resolvedWorkLocations = workLocationRows.length
+    ? workLocationRows.map(r => r.name)
+    : workLocations;
+
   const scopeParts = [
-    ...workLocations,
-    ...branches.filter(b => !workLocations.includes(b)),
+    ...resolvedWorkLocations,
+    ...branches.filter(b => !resolvedWorkLocations.includes(b)),
   ];
   const scopeLabel =
     scopeParts.length > 0
@@ -139,7 +196,13 @@ export const extractLocationScopeFromMe = (payload: any): MeLocationScope => {
         (scopeParts.length > 3 ? ` +${scopeParts.length - 3}` : '')
       : regions[0] || 'Assigned locations';
 
-  return { workLocations, branches, regions, scopeLabel };
+  return {
+    workLocations: resolvedWorkLocations,
+    branches,
+    regions,
+    scopeLabel,
+    workLocationRows,
+  };
 };
 
 /** Build CRM subscription filter clauses from /me location scope. */

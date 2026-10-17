@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { View, Alert } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   FieldLabel,
   FormCard,
@@ -20,6 +21,12 @@ import {
   findWorkLocationLookupItem,
   getBranchRegionFromLookupItem,
 } from '../../helpers/subscriptionPricing.helper';
+import {
+  findMeWorkLocationRow,
+  type MeWorkLocationRow,
+} from '../../helpers/meLocation.helper';
+import { refreshMeProfile } from '../../services/auth.services';
+import type { RootState, AppDispatch } from '../../store';
 
 const NURSE_TYPES = [
   'General Nurse',
@@ -41,6 +48,8 @@ const ProfessionalDetails = ({
   onFormDataChange,
   showValidation,
 }: Props) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const meUser = useSelector((s: RootState) => s.auth.user);
   const {
     categoryOptions,
     gradeOptions,
@@ -56,6 +65,27 @@ const ProfessionalDetails = ({
   const retired = isRetiredAssociateCategory(categoryLabel);
   const adaptationYes = formData?.nursingAdaptationProgramme === 'yes';
   const adaptationNo = formData?.nursingAdaptationProgramme === 'no';
+
+  const meWorkLocationRows: MeWorkLocationRow[] = useMemo(() => {
+    if (meUser?.workLocationRows?.length) {
+      return meUser.workLocationRows;
+    }
+    return (meUser?.workLocations || []).map(name => ({
+      name,
+      branch: '',
+      region: '',
+    }));
+  }, [meUser?.workLocationRows, meUser?.workLocations]);
+
+  const meWorkLocationNames = useMemo(
+    () => meWorkLocationRows.map(r => r.name),
+    [meWorkLocationRows],
+  );
+
+  useEffect(() => {
+    if (meWorkLocationNames.length) return;
+    dispatch(refreshMeProfile());
+  }, [dispatch, meWorkLocationNames.length]);
 
   const err = (key: string, required = true) =>
     Boolean(showValidation && required && !formData?.[key]);
@@ -84,8 +114,20 @@ const ProfessionalDetails = ({
     [gradeOptions],
   );
 
-  // Portal ProfessionalDetails: names from hierarchy items (lookup.DisplayName…)
+  /**
+   * Branch Officer scope: work locations from /me assignedLocations.
+   * Fall back to hierarchy lookups only when /me has none.
+   */
   const workLocations = useMemo(() => {
+    if (meWorkLocationNames.length) {
+      const opts = meWorkLocationNames
+        .slice()
+        .sort((a, b) => a.localeCompare(b))
+        .map(name => ({ label: name, value: name }));
+      opts.push({ label: 'Other', value: 'other' });
+      return opts;
+    }
+
     const fromHierarchy = (workLocationLookups || [])
       .map(getWorkLocationDisplayName)
       .filter(Boolean)
@@ -106,7 +148,22 @@ const ProfessionalDetails = ({
     merged.sort((a, b) => a.label.localeCompare(b.label));
     merged.push({ label: 'Other', value: 'other' });
     return merged;
-  }, [workLocationLookups, workLocationOptions]);
+  }, [meWorkLocationNames, workLocationLookups, workLocationOptions]);
+
+  /** Prefer /me row branch/region; fill gaps from hierarchy lookups. */
+  const resolveBranchRegionForWorkLocation = (workLocation?: string) => {
+    if (!workLocation || workLocation === 'other') {
+      return { branch: '', region: '' };
+    }
+    const meRow = findMeWorkLocationRow(workLocation, meWorkLocationRows);
+    const fromHierarchy = getBranchRegionFromLookupItem(
+      findWorkLocationLookupItem(workLocation, workLocationLookups),
+    );
+    return {
+      branch: meRow?.branch || fromHierarchy.branch || '',
+      region: meRow?.region || fromHierarchy.region || '',
+    };
+  };
 
   const studyLocations = useMemo(
     () => studyLocationOptions,
@@ -128,11 +185,7 @@ const ProfessionalDetails = ({
   const getUndergraduateBranchRegion = (draft: Record<string, any>) => {
     if (draft.workLocation === 'other') return { branch: '', region: '' };
     if (draft.workLocation) {
-      const selected = findWorkLocationLookupItem(
-        draft.workLocation,
-        workLocationLookups,
-      );
-      return getBranchRegionFromLookupItem(selected);
+      return resolveBranchRegionForWorkLocation(draft.workLocation);
     }
     if (draft.studyLocation) {
       return resolveBranchRegionFromStudyLocation(
@@ -164,9 +217,7 @@ const ProfessionalDetails = ({
       branch = resolved.branch;
       region = resolved.region;
     } else if (base.workLocation && base.workLocation !== 'other') {
-      const resolved = getBranchRegionFromLookupItem(
-        findWorkLocationLookupItem(base.workLocation, workLocationLookups),
-      );
+      const resolved = resolveBranchRegionForWorkLocation(base.workLocation);
       branch = resolved.branch;
       region = resolved.region;
     }
@@ -209,12 +260,7 @@ const ProfessionalDetails = ({
       next.branch = '';
       next.region = '';
     } else if (val) {
-      Object.assign(
-        next,
-        getBranchRegionFromLookupItem(
-          findWorkLocationLookupItem(val, workLocationLookups),
-        ),
-      );
+      Object.assign(next, resolveBranchRegionForWorkLocation(val));
       next.otherWorkLocation = '';
     } else if (isUndergraduateStudentCategory(next.membershipCategory)) {
       Object.assign(next, getUndergraduateBranchRegion(next));
@@ -244,7 +290,7 @@ const ProfessionalDetails = ({
   const set = (key: string, value: any) =>
     onFormDataChange({ ...formData, [key]: value });
 
-  // Keep branch/region in sync when hierarchy lookups arrive (Portal + CRM)
+  // Keep branch/region in sync when /me rows or hierarchy lookups arrive
   useEffect(() => {
     const wl = formData?.workLocation;
     const hasWorkLocation = Boolean(wl && wl !== 'other');
@@ -254,14 +300,18 @@ const ProfessionalDetails = ({
     if (!hasWorkLocation && !(studentCat && formData?.studyLocation)) {
       return;
     }
-    if (!workLocationLookups?.length && !rawLookups?.length) return;
+    if (
+      !meWorkLocationRows.length &&
+      !workLocationLookups?.length &&
+      !rawLookups?.length
+    ) {
+      return;
+    }
 
     let branch = '';
     let region = '';
     if (hasWorkLocation) {
-      const resolved = getBranchRegionFromLookupItem(
-        findWorkLocationLookupItem(wl, workLocationLookups),
-      );
+      const resolved = resolveBranchRegionForWorkLocation(wl);
       branch = resolved.branch;
       region = resolved.region;
     } else if (studentCat) {
@@ -287,6 +337,7 @@ const ProfessionalDetails = ({
     formData?.workLocation,
     formData?.studyLocation,
     formData?.membershipCategory,
+    meWorkLocationRows,
     workLocationLookups,
     rawLookups,
   ]);

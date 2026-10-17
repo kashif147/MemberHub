@@ -116,6 +116,7 @@ const mapMeToUser = (payload: any): AuthUser => {
     branches: location.scopeLabel,
     initials,
     workLocations: location.workLocations,
+    workLocationRows: location.workLocationRows,
     branchFilters: location.branches,
     regionFilters: location.regions,
   };

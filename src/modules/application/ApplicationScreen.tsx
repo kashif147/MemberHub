@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { Colors } from '../../theme/colors';
 import PersonalInformation from './PersonalInformation';
 import ProfessionalDetails from './ProfessionalDetails';
 import SubscriptionDetails from './SubscriptionDetails';
+import SubscriptionPaymentModal from './SubscriptionPaymentModal';
 import { useLookup } from '../../contexts/lookupContext';
 import {
   createPersonalDetailRequest,
@@ -43,6 +44,7 @@ import {
   getFrequencyOptionsForPaymentType,
   isSalaryDeductionPaymentType,
 } from '../../helpers/subscriptionPricing.helper';
+import { APPLICATION_PAYMENT_AUTHORISED_MESSAGE } from '../../helpers/paymentIntent.helper';
 
 const steps = [
   { number: 1, title: 'Personal' },
@@ -76,8 +78,11 @@ const initialFormData = {
   professionalDetails: {
     membershipCategory: '',
     grade: '',
+    otherGrade: '',
     workLocation: '',
     otherWorkLocation: '',
+    branch: '',
+    region: '',
     retired: false,
     retiredDate: '',
     pensionNo: '',
@@ -115,6 +120,16 @@ const ApplicationScreen = () => {
   );
   const [hasProfessional, setHasProfessional] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [shouldShowModal, setShouldShowModal] = useState(false);
+
+  // Portal: show payment modal after subscription is saved
+  useEffect(() => {
+    if (shouldShowModal) {
+      setIsModalVisible(true);
+      setShouldShowModal(false);
+    }
+  }, [shouldShowModal]);
 
   const handleFormDataChange = (
     stepName: keyof typeof initialFormData,
@@ -261,92 +276,114 @@ const ApplicationScreen = () => {
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
-  const finishBulkRegister = () => {
+  const resetForAnother = () => {
+    setFormData(initialFormData);
+    setApplicationId(null);
+    setHasProfessional(false);
+    setHasSubscription(false);
+    setIsSubmitted(false);
+    setShowValidation(false);
+    setCurrentStep(1);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const finishBulkRegister = (extraMessage?: string) => {
     setIsSubmitted(true);
     const name =
       `${formData.personalInfo.forename} ${formData.personalInfo.surname}`.trim();
-    Alert.alert(
-      'Application submitted',
-      `${name || 'Application'} tagged to “${driveName}” and pending review.`,
-      [
-        {
-          text: 'Register another',
-          onPress: () => {
-            setFormData(initialFormData);
-            setApplicationId(null);
-            setHasProfessional(false);
-            setHasSubscription(false);
-            setIsSubmitted(false);
-            setShowValidation(false);
-            setCurrentStep(1);
-            scrollRef.current?.scrollTo({ y: 0, animated: true });
-          },
-        },
-        {
-          text: 'Done',
-          style: 'cancel',
-          onPress: () => navigation.popToTop(),
-        },
-      ],
-    );
+    const base = `${name || 'Application'} tagged to “${driveName}” and pending review.`;
+    Alert.alert('Application submitted', extraMessage ? `${base}\n\n${extraMessage}` : base, [
+      {
+        text: 'Register another',
+        onPress: resetForAnother,
+      },
+      {
+        text: 'Done',
+        style: 'cancel',
+        onPress: () => navigation.popToTop(),
+      },
+    ]);
+  };
+
+  const handleModalClose = () => {
+    setIsModalVisible(false);
+  };
+
+  const handlePaymentSuccess = (paymentData: Record<string, any>) => {
+    // Portal Application.js: close modal, then authorised / completed Alert
+    setIsModalVisible(false);
+    const outcome = paymentData?.paymentOutcome;
+    const title = outcome?.title || 'Payment authorised';
+    const message =
+      outcome?.message || APPLICATION_PAYMENT_AUTHORISED_MESSAGE;
+    Alert.alert(title, message, [
+      {
+        text: 'OK',
+        onPress: () => finishBulkRegister(),
+      },
+    ]);
+  };
+
+  const handlePaymentFailure = (_message?: string) => {
+    // Modal shows the Alert and stays open for retry — do not close here
   };
 
   const savePersonalStep = async () => {
-    // const payload = buildPersonalPayload(formData.personalInfo);
-    // setStepLoading(true);
-    // try {
-    //   const res = applicationId
-    //     ? await updatePersonalDetailRequest(applicationId, payload)
-    //     : await createPersonalDetailRequest(payload);
+    const payload = buildPersonalPayload(formData.personalInfo);
+    setStepLoading(true);
+    try {
+      const res = applicationId
+        ? await updatePersonalDetailRequest(applicationId, payload)
+        : await createPersonalDetailRequest(payload);
 
-    //   if (!(res?.status >= 200 && res?.status < 300)) {
-    //     throw new Error(
-    //       extractApiError(res, 'Unable to save personal details'),
-    //     );
-    //   }
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        throw new Error(
+          extractApiError(res, 'Unable to save personal details'),
+        );
+      }
 
-    //   const id = extractApplicationId(res) || applicationId;
-    //   if (id) setApplicationId(id);
+      const id = extractApplicationId(res) || applicationId;
+      if (id) setApplicationId(id);
       advanceStep();
-    // } catch (e: any) {
-    //   Alert.alert('Error', e?.message || 'Unable to save personal details');
-    // } finally {
-    //   setStepLoading(false);
-    // }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Unable to save personal details');
+    } finally {
+      setStepLoading(false);
+    }
   };
 
   const saveProfessionalStep = async () => {
-    // if (!applicationId) {
-    //   Alert.alert('Error', 'Missing application id. Re-save personal details.');
-    //   return;
-    // }
-    // const payload = buildProfessionalPayload(formData.professionalDetails);
-    // setStepLoading(true);
-    // try {
-    //   let res = hasProfessional
-    //     ? await updateProfessionalDetailRequest(applicationId, payload)
-    //     : await createProfessionalDetailRequest(applicationId, payload);
+    if (!applicationId) {
+      Alert.alert('Error', 'Missing application id. Re-save personal details.');
+      return;
+    }
+    const payload = buildProfessionalPayload(formData.professionalDetails);
+    setStepLoading(true);
+    try {
+      let res = hasProfessional
+        ? await updateProfessionalDetailRequest(applicationId, payload)
+        : await createProfessionalDetailRequest(applicationId, payload);
 
-    //   // CRM ApplicationMgtDrawer: PUT then fallback POST (or reverse)
-    //   if (!(res?.status >= 200 && res?.status < 300)) {
-    //     res = hasProfessional
-    //       ? await createProfessionalDetailRequest(applicationId, payload)
-    //       : await updateProfessionalDetailRequest(applicationId, payload);
-    //   }
+      // CRM ApplicationMgtDrawer: PUT then fallback POST (or reverse)
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        res = hasProfessional
+          ? await createProfessionalDetailRequest(applicationId, payload)
+          : await updateProfessionalDetailRequest(applicationId, payload);
+      }
 
-    //   if (!(res?.status >= 200 && res?.status < 300)) {
-    //     throw new Error(
-    //       extractApiError(res, 'Unable to save professional details'),
-    //     );
-    //   }
+      if (!(res?.status >= 200 && res?.status < 300)) {
+        throw new Error(
+          extractApiError(res, 'Unable to save professional details'),
+        );
+      }
 
-    //   setHasProfessional(true);
+      setHasProfessional(true);
       advanceStep();
-    // } catch (e: any) {
-    //   Alert.alert('Error', e?.message || 'Unable to save professional details');
-    // } finally {
-    //   setStepLoading(false);
-    // }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Unable to save professional details');
+    } finally {
+      setStepLoading(false);
+    }
   };
 
   const saveSubscriptionStep = async () => {
@@ -377,8 +414,13 @@ const ApplicationScreen = () => {
       }
 
       setHasSubscription(true);
-      // Branch Officer / CRM bulk: no member payment modal
-      finishBulkRegister();
+
+      // Portal: undergrads skip payment; others open SubscriptionPaymentModal
+      if (isUndergraduateStudent) {
+        finishBulkRegister();
+      } else {
+        setShouldShowModal(true);
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Unable to save subscription details');
     } finally {
@@ -566,6 +608,21 @@ const ApplicationScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <SubscriptionPaymentModal
+        visible={isModalVisible}
+        onClose={handleModalClose}
+        onSuccess={handlePaymentSuccess}
+        onFailure={handlePaymentFailure}
+        formData={{
+          personalInfo: formData.personalInfo,
+          subscriptionDetails: formData.subscriptionDetails,
+        }}
+        membershipCategory={
+          formData.professionalDetails?.membershipCategory || ''
+        }
+        applicationId={applicationId}
+      />
     </View>
   );
 };

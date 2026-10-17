@@ -8,6 +8,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   useFocusEffect,
@@ -16,10 +20,20 @@ import {
   type RouteProp,
 } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
-import { ChevronDown, ChevronUp, Paperclip, Plus } from 'lucide-react-native';
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Eye,
+  Paperclip,
+  Plus,
+  Send,
+} from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import {
+  addCaseNote,
   loadCaseDetail,
+  resolveCaseAttachmentUrl,
   uploadCaseAttachments,
   type CaseActivityItem,
   type CaseAttachmentItem,
@@ -36,6 +50,12 @@ import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { CaseStatus } from '../../data/mockCases';
 import type { RootState } from '../../store';
+
+const stripHtml = (value: string) =>
+  String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 type RouteParams = {
   [STACKS.CASE_DETAIL]: { issueId: string; title?: string };
@@ -134,6 +154,11 @@ const CaseDetailScreen = () => {
   const [activityOpen, setActivityOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [postingNote, setPostingNote] = useState(false);
+  const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(
+    null,
+  );
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
@@ -194,7 +219,58 @@ const CaseDetailScreen = () => {
     }
   };
 
-  const onUploadPress = () => chooseAttachSource(onAttachSource);
+  const onUploadPress = () => {
+    if (isClosed) {
+      Alert.alert('Case closed', 'Cannot add attachments to a closed case.');
+      return;
+    }
+    chooseAttachSource(onAttachSource);
+  };
+
+  /** CRM CasesDetails openAttachment — view & download both open SAS URL. */
+  const openAttachment = async (file: CaseAttachmentItem) => {
+    if (openingAttachmentId) return;
+    setOpeningAttachmentId(file.id);
+    try {
+      const url = await resolveCaseAttachmentUrl(file);
+      const can = await Linking.canOpenURL(url);
+      if (!can) {
+        throw new Error('Unable to open this file on this device.');
+      }
+      await Linking.openURL(url);
+    } catch (err: any) {
+      Alert.alert(
+        'Attachment',
+        err?.message || 'Failed to open attachment',
+      );
+    } finally {
+      setOpeningAttachmentId(null);
+    }
+  };
+
+  /** CRM CasesDetails handlePostActivity — NOTE */
+  const onAddNote = async () => {
+    if (!issueId || postingNote) return;
+    if (isClosed) {
+      Alert.alert('Case closed', 'Cannot add a note to a closed case.');
+      return;
+    }
+    const trimmed = noteText.trim();
+    if (!trimmed) {
+      Alert.alert('Validation', 'Please enter a note.');
+      return;
+    }
+    setPostingNote(true);
+    try {
+      await addCaseNote(issueId, trimmed);
+      setNoteText('');
+      await load(true);
+    } catch (err: any) {
+      Alert.alert('Note', err?.message || 'Failed to add note');
+    } finally {
+      setPostingNote(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -253,145 +329,222 @@ const CaseDetailScreen = () => {
         onBack={() => navigation.goBack()}
       />
 
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.flex}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            tintColor={Colors.primary}
-          />
-        }>
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <Text style={styles.category}>
-              {(issue.complaintTypeLabel !== '—'
-                ? issue.complaintTypeLabel
-                : issue.issueTypeLabel
-              ).toUpperCase()}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={Colors.primary}
+            />
+          }>
+          <View style={styles.heroCard}>
+            <View style={styles.heroTop}>
+              <Text style={styles.category}>
+                {(issue.complaintTypeLabel !== '—'
+                  ? issue.complaintTypeLabel
+                  : issue.issueTypeLabel
+                ).toUpperCase()}
+              </Text>
+              <StatusBadge status={issue.issueStatusUi} />
+            </View>
+            <Text style={styles.heroTitle}>{issue.caseTitle}</Text>
+            <Text style={styles.heroMeta}>
+              {issue.internalReferenceNumber} · {issue.complainant} ·{' '}
+              {issue.dateReceived}
             </Text>
-            <StatusBadge status={issue.issueStatusUi} />
           </View>
-          <Text style={styles.heroTitle}>{issue.caseTitle}</Text>
-          <Text style={styles.heroMeta}>
-            {issue.internalReferenceNumber} · {issue.complainant} ·{' '}
-            {issue.dateReceived}
-          </Text>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Description</Text>
-          <Text style={styles.bodyText}>{issue.description}</Text>
-        </View>
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Description</Text>
+            <Text style={styles.bodyText}>{issue.description}</Text>
+          </View>
 
-        <SectionCard
-          title="Details"
-          subtitle="Type, priority, source, ownership"
-          expanded={detailsOpen}
-          onToggle={() => setDetailsOpen(v => !v)}>
-          <FieldRow label="Issue type" value={issue.issueTypeLabel} />
-          <FieldRow label="Complaint type" value={issue.complaintTypeLabel} />
-          <FieldRow label="Status" value={formatIssueEnumLabel(issue.issueStatus)} />
-          <FieldRow label="Priority" value={issue.priorityLabel} />
-          <FieldRow label="Date received" value={issue.dateReceived} />
-          <FieldRow label="Origin" value={issue.origin} />
-          <FieldRow label="Issue source" value={issue.issueSource} />
-          <FieldRow label="Complainant" value={issue.complainant} />
-          <FieldRow label="Owner team" value={issue.ownerTeam} />
-          <FieldRow label="Created" value={issue.createdOn} />
-          <FieldRow label="Last updated" value={issue.updatedAt} last />
-        </SectionCard>
+          <SectionCard
+            title="Details"
+            subtitle="Type, priority, source, ownership"
+            expanded={detailsOpen}
+            onToggle={() => setDetailsOpen(v => !v)}>
+            <FieldRow label="Issue type" value={issue.issueTypeLabel} />
+            <FieldRow label="Complaint type" value={issue.complaintTypeLabel} />
+            <FieldRow
+              label="Status"
+              value={formatIssueEnumLabel(issue.issueStatus)}
+            />
+            <FieldRow label="Priority" value={issue.priorityLabel} />
+            <FieldRow label="Date received" value={issue.dateReceived} />
+            <FieldRow label="Origin" value={issue.origin} />
+            <FieldRow label="Issue source" value={issue.issueSource} />
+            <FieldRow label="Complainant" value={issue.complainant} />
+            <FieldRow label="Owner team" value={issue.ownerTeam} />
+            <FieldRow label="Created" value={issue.createdOn} />
+            <FieldRow label="Last updated" value={issue.updatedAt} last />
+          </SectionCard>
 
-        <SectionCard
-          title="Attachments"
-          subtitle={
-            attachments.length
-              ? `${attachments.length} file${attachments.length === 1 ? '' : 's'}`
-              : 'No files attached'
-          }
-          expanded={attachmentsOpen}
-          onToggle={() => setAttachmentsOpen(v => !v)}>
-          {attachments.length === 0 ? (
-            <Text style={styles.emptyInline}>No attachments.</Text>
-          ) : (
-            attachments.map((file: CaseAttachmentItem) => (
-              <View key={file.id} style={styles.attachmentRow}>
-                <Paperclip size={16} color={Colors.primary} strokeWidth={2} />
-                <View style={styles.attachmentText}>
-                  <Text style={styles.attachmentName} numberOfLines={1}>
-                    {file.name}
-                  </Text>
-                  <Text style={styles.attachmentMeta}>{file.createdAt}</Text>
-                </View>
-              </View>
-            ))
-          )}
-
-          <TouchableOpacity
-            style={[
-              styles.uploadZone,
-              (isClosed || uploadingAttachment) && styles.uploadZoneDisabled,
-            ]}
-            onPress={onUploadPress}
-            disabled={isClosed || uploadingAttachment}
-            activeOpacity={0.75}>
-            {uploadingAttachment ? (
-              <ActivityIndicator color={Colors.primary} />
+          <SectionCard
+            title="Attachments"
+            subtitle={
+              attachments.length
+                ? `${attachments.length} file${
+                    attachments.length === 1 ? '' : 's'
+                  }`
+                : 'No files attached'
+            }
+            expanded={attachmentsOpen}
+            onToggle={() => setAttachmentsOpen(v => !v)}>
+            {attachments.length === 0 ? (
+              <Text style={styles.emptyInline}>No attachments.</Text>
             ) : (
-              <Paperclip size={22} color={Colors.primary} strokeWidth={2} />
+              attachments.map((file: CaseAttachmentItem) => {
+                const busy = openingAttachmentId === file.id;
+                return (
+                  <View key={file.id} style={styles.attachmentRow}>
+                    <Paperclip
+                      size={16}
+                      color={Colors.primary}
+                      strokeWidth={2}
+                    />
+                    <View style={styles.attachmentText}>
+                      <Text style={styles.attachmentName} numberOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Text style={styles.attachmentMeta}>{file.createdAt}</Text>
+                    </View>
+                    {busy ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <View style={styles.attachmentActions}>
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          onPress={() => openAttachment(file)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel="View attachment">
+                          <Eye
+                            size={18}
+                            color={Colors.textSecondary}
+                            strokeWidth={2.2}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconBtn}
+                          onPress={() => openAttachment(file)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel="Download attachment">
+                          <Download
+                            size={18}
+                            color={Colors.textSecondary}
+                            strokeWidth={2.2}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                );
+              })
             )}
-            <Text style={styles.uploadTitle}>
-              {uploadingAttachment ? 'Uploading…' : 'Upload files'}
-            </Text>
-            <Text style={styles.uploadHint}>PDF, PNG, JPEG or DOCX</Text>
-          </TouchableOpacity>
-        </SectionCard>
 
-        <SectionCard
-          title="Activity"
-          subtitle={`${activities.length} update${
-            activities.length === 1 ? '' : 's'
-          }`}
-          expanded={activityOpen}
-          onToggle={() => setActivityOpen(v => !v)}>
-          {activities.length === 0 ? (
-            <Text style={styles.emptyInline}>No activity yet.</Text>
-          ) : (
-            activities.map((a: CaseActivityItem) => (
-              <View key={a.id} style={styles.timelineCard}>
-                <Text style={styles.timelineType}>
-                  {formatIssueEnumLabel(a.activityType)}
-                </Text>
-                <Text style={styles.timelineBody}>{a.body}</Text>
-                <Text style={styles.timelineMeta}>
-                  {a.createdBy} · {a.createdAt}
-                </Text>
-              </View>
-            ))
-          )}
-        </SectionCard>
+            <TouchableOpacity
+              style={[
+                styles.uploadZone,
+                (isClosed || uploadingAttachment) && styles.uploadZoneDisabled,
+              ]}
+              onPress={onUploadPress}
+              disabled={isClosed || uploadingAttachment}
+              activeOpacity={0.75}>
+              {uploadingAttachment ? (
+                <ActivityIndicator color={Colors.primary} />
+              ) : (
+                <Paperclip size={22} color={Colors.primary} strokeWidth={2} />
+              )}
+              <Text style={styles.uploadTitle}>
+                {uploadingAttachment ? 'Uploading…' : 'Add more attachments'}
+              </Text>
+              <Text style={styles.uploadHint}>PDF, PNG, JPEG or DOCX</Text>
+            </TouchableOpacity>
+          </SectionCard>
 
-        <SectionCard
-          title="History"
-          subtitle={`${history.length} event${history.length === 1 ? '' : 's'}`}
-          expanded={historyOpen}
-          onToggle={() => setHistoryOpen(v => !v)}>
-          {history.length === 0 ? (
-            <Text style={styles.emptyInline}>No history yet.</Text>
-          ) : (
-            history.map((h: CaseHistoryItem) => (
-              <View key={h.id} style={styles.timelineCard}>
-                <Text style={styles.timelineBody}>{h.summary}</Text>
-                <Text style={styles.timelineMeta}>
-                  {h.actor} · {h.createdAt}
-                </Text>
+          <SectionCard
+            title="Activity"
+            subtitle={`${activities.length} update${
+              activities.length === 1 ? '' : 's'
+            }`}
+            expanded={activityOpen}
+            onToggle={() => setActivityOpen(v => !v)}>
+            {!isClosed ? (
+              <View style={styles.noteComposer}>
+                <TextInput
+                  style={styles.noteInput}
+                  value={noteText}
+                  onChangeText={setNoteText}
+                  placeholder="Add a note…"
+                  placeholderTextColor={Colors.textPlaceholder}
+                  multiline
+                  textAlignVertical="top"
+                  editable={!postingNote}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.noteSendBtn,
+                    (!noteText.trim() || postingNote) && { opacity: 0.55 },
+                  ]}
+                  onPress={onAddNote}
+                  disabled={!noteText.trim() || postingNote}
+                  activeOpacity={0.85}>
+                  {postingNote ? (
+                    <ActivityIndicator color={Colors.white} size="small" />
+                  ) : (
+                    <Send size={18} color={Colors.white} strokeWidth={2.2} />
+                  )}
+                </TouchableOpacity>
               </View>
-            ))
-          )}
-        </SectionCard>
-      </ScrollView>
+            ) : null}
+
+            {activities.length === 0 ? (
+              <Text style={styles.emptyInline}>No activity yet.</Text>
+            ) : (
+              activities.map((a: CaseActivityItem) => (
+                <View key={a.id} style={styles.timelineCard}>
+                  <Text style={styles.timelineType}>
+                    {formatIssueEnumLabel(a.activityType)}
+                  </Text>
+                  <Text style={styles.timelineBody}>
+                    {stripHtml(a.body) || '—'}
+                  </Text>
+                  <Text style={styles.timelineMeta}>
+                    {a.createdBy} · {a.createdAt}
+                  </Text>
+                </View>
+              ))
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="History"
+            subtitle={`${history.length} event${history.length === 1 ? '' : 's'}`}
+            expanded={historyOpen}
+            onToggle={() => setHistoryOpen(v => !v)}>
+            {history.length === 0 ? (
+              <Text style={styles.emptyInline}>No history yet.</Text>
+            ) : (
+              history.map((h: CaseHistoryItem) => (
+                <View key={h.id} style={styles.timelineCard}>
+                  <Text style={styles.timelineBody}>{h.summary}</Text>
+                  <Text style={styles.timelineMeta}>
+                    {h.actor} · {h.createdAt}
+                  </Text>
+                </View>
+              ))
+            )}
+          </SectionCard>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {!isClosed ? (
         <TouchableOpacity
@@ -399,7 +552,7 @@ const CaseDetailScreen = () => {
           onPress={onUploadPress}
           disabled={uploadingAttachment}
           activeOpacity={0.85}
-          accessibilityLabel="Upload attachment">
+          accessibilityLabel="Add attachment">
           {uploadingAttachment ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
@@ -556,6 +709,47 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  attachmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceMuted,
+  },
+  noteComposer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  noteInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.surface,
+  },
+  noteSendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   uploadZone: {
     marginTop: 12,

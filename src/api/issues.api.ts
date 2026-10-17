@@ -169,3 +169,48 @@ export const uploadIssueAttachmentRequest = async (
     error: res.data,
   };
 };
+
+/** Same as ProjectShell-1 issuesApi.createActivity — POST /issues/:id/activities */
+export const createIssueActivityRequest = async (
+  issueId: string,
+  payload: Record<string, any>,
+) => {
+  const res = await client.post(`/issues/${issueId}/activities`, payload);
+  return {
+    status: res.status,
+    data: unwrap(res),
+    error: res.data,
+  };
+};
+
+/**
+ * Same as ProjectShell-1 issuesApi.getAttachmentDownloadUrl —
+ * GET /activities/:activityId/attachments/:index/download → { url } SAS.
+ */
+export const fetchAttachmentDownloadUrlRequest = async (
+  activityId: string,
+  index: number,
+) => {
+  const res = await client.get(
+    `/activities/${activityId}/attachments/${index}/download`,
+  );
+  return {
+    status: res.status,
+    data: unwrap(res),
+    error: res.data,
+  };
+};
+
+/** Best-effort message from issue-service upload/activity error body. */
+export const extractUploadErrorMessage = (
+  res: { error?: any; status?: number } | null | undefined,
+  fallback = 'Upload failed',
+) => {
+  const d = res?.error;
+  if (!d) return fallback;
+  if (typeof d?.error?.message === 'string') return d.error.message;
+  if (typeof d?.message === 'string') return d.message;
+  if (typeof d?.error === 'string') return d.error;
+  if (typeof d === 'string') return d;
+  return fallback;
+};

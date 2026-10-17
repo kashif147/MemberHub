@@ -1,5 +1,8 @@
 import {
+  createIssueActivityRequest,
   createIssueRequest,
+  extractUploadErrorMessage,
+  fetchAttachmentDownloadUrlRequest,
   fetchIssueActivitiesRequest,
   fetchIssueAttachmentsRequest,
   fetchIssueByIdRequest,
@@ -9,6 +12,10 @@ import {
   fetchIssueStatusesRequest,
   uploadIssueAttachmentRequest,
 } from '../api/issues.api';
+import {
+  CASE_ATTACHMENT_TYPES_HINT,
+  isAllowedCaseAttachment,
+} from '../helpers/documentPicker.helper';
 import {
   formatCaseDateTime,
   mapIssueToCaseItem,
@@ -75,6 +82,11 @@ export type CaseAttachmentItem = {
   id: string;
   name: string;
   createdAt: string;
+  /** Required for CRM download/view SAS URL */
+  activityId?: string;
+  index?: number;
+  /** Optional direct URL when already present on the attachment row */
+  url?: string;
 };
 
 export type CaseDetailBundle = {
@@ -136,11 +148,27 @@ export const loadCaseDetail = async (
   );
 
   const attachments: CaseAttachmentItem[] = (attachmentsRes.data || []).map(
-    (f: any, i: number) => ({
-      id: String(f?.id || f?._id || `${f?.activityId || 'file'}-${i}`),
-      name: String(f?.name || f?.fileName || `Attachment ${i + 1}`),
-      createdAt: formatCaseDateTime(f?.createdAt || f?.uploadedAt),
-    }),
+    (f: any, i: number) => {
+      const activityId = String(f?.activityId || f?.activity_id || '');
+      const index =
+        typeof f?.index === 'number'
+          ? f.index
+          : typeof f?.attachmentIndex === 'number'
+            ? f.attachmentIndex
+            : i;
+      return {
+        id: String(
+          f?.id || f?._id || `${activityId || 'file'}-${index}`,
+        ),
+        name: String(
+          f?.name || f?.fileName || f?.filename || `Attachment ${i + 1}`,
+        ),
+        createdAt: formatCaseDateTime(f?.createdAt || f?.uploadedAt),
+        activityId: activityId || undefined,
+        index,
+        url: String(f?.url || f?.downloadUrl || '').trim() || undefined,
+      };
+    },
   );
 
   return { issue, activities, history, attachments };
@@ -190,14 +218,24 @@ export const createNewCase = async (
   const failedUploads: string[] = [];
   if (newIssueId && attachments.length > 0) {
     for (const file of attachments) {
+      if (!isAllowedCaseAttachment(file)) {
+        failedUploads.push(
+          `${file.name} (use ${CASE_ATTACHMENT_TYPES_HINT})`,
+        );
+        continue;
+      }
       try {
         // eslint-disable-next-line no-await-in-loop
         const uploadRes = await uploadIssueAttachmentRequest(newIssueId, file);
         if (!(uploadRes.status >= 200 && uploadRes.status < 300)) {
-          failedUploads.push(file.name);
+          failedUploads.push(
+            `${file.name}: ${extractUploadErrorMessage(uploadRes, 'upload failed')}`,
+          );
         }
-      } catch {
-        failedUploads.push(file.name);
+      } catch (e: any) {
+        failedUploads.push(
+          `${file.name}: ${e?.message || 'upload failed'}`,
+        );
       }
     }
   }
@@ -213,20 +251,72 @@ export const uploadCaseAttachments = async (
   if (!issueId) throw new Error('Missing case id');
   const failedUploads: string[] = [];
   for (const file of files) {
+    if (!isAllowedCaseAttachment(file)) {
+      failedUploads.push(
+        `${file.name} (use ${CASE_ATTACHMENT_TYPES_HINT})`,
+      );
+      continue;
+    }
     try {
       // eslint-disable-next-line no-await-in-loop
       const uploadRes = await uploadIssueAttachmentRequest(issueId, file);
       if (!(uploadRes.status >= 200 && uploadRes.status < 300)) {
-        failedUploads.push(file.name);
+        failedUploads.push(
+          `${file.name}: ${extractUploadErrorMessage(uploadRes, 'upload failed')}`,
+        );
       }
-    } catch {
-      failedUploads.push(file.name);
+    } catch (e: any) {
+      failedUploads.push(`${file.name}: ${e?.message || 'upload failed'}`);
     }
   }
   if (failedUploads.length === files.length && files.length > 0) {
-    throw new Error(
-      `Failed to upload: ${failedUploads.join(', ')}`,
-    );
+    throw new Error(`Failed to upload: ${failedUploads.join(', ')}`);
   }
   return { failedUploads };
+};
+
+/**
+ * CRM CasesDetails handlePostActivity — log a NOTE on an open issue.
+ * MemberHub BO uses the staff issue-service activity API (not portal comments).
+ */
+export const addCaseNote = async (issueId: string, noteText: string) => {
+  if (!issueId) throw new Error('Missing case id');
+  const body = String(noteText || '').trim();
+  if (!body) throw new Error('Note text is required');
+
+  const res = await createIssueActivityRequest(issueId, {
+    activityType: 'NOTE',
+    subject: null,
+    body,
+    interactionDate: new Date().toISOString(),
+    pertinentToFileReview: false,
+    sendNotification: true,
+    visibleToMember: false,
+  });
+  assertOk(res, extractUploadErrorMessage(res, 'Failed to add note'));
+  return res.data;
+};
+
+/**
+ * CRM CasesDetails openAttachment — resolve SAS URL then open (view/download).
+ */
+export const resolveCaseAttachmentUrl = async (
+  file: CaseAttachmentItem,
+): Promise<string> => {
+  if (file.url) return file.url;
+  if (!file.activityId || file.index == null) {
+    throw new Error('Unable to open this attachment.');
+  }
+  const res = await fetchAttachmentDownloadUrlRequest(
+    file.activityId,
+    file.index,
+  );
+  assertOk(res, extractUploadErrorMessage(res, 'Failed to open attachment'));
+  const url = String(
+    res?.data?.url || res?.data?.downloadUrl || res?.data || '',
+  ).trim();
+  if (!url || !/^https?:\/\//i.test(url)) {
+    throw new Error('Download link unavailable for this attachment.');
+  }
+  return url;
 };

@@ -116,7 +116,7 @@ const NewCaseScreen = () => {
       if (!next.length) {
         Alert.alert(
           'Attachments',
-          'No file was selected. Choose a PDF, PNG, JPEG, or DOCX.',
+          'No file was selected. Choose a PDF, PNG, JPEG, or DOCX (not legacy .doc).',
         );
         return;
       }
@@ -187,7 +187,9 @@ const NewCaseScreen = () => {
       if (failedUploads.length > 0) {
         Alert.alert(
           'Partial success',
-          `Case created, but failed to upload: ${failedUploads.join(', ')}`,
+          `Case created, but some attachments failed:\n${failedUploads.join(
+            '\n',
+          )}\n\nAllowed: PDF, PNG, JPEG, DOCX.`,
           [{ text: 'OK', onPress: () => navigation.goBack() }],
         );
         return;

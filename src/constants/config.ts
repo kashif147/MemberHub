@@ -26,6 +26,12 @@ export const SUBSCRIPTION_SERVICE_URL =
   'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/subscription-service/api/v1';
 
 /**
+ * Account / Stripe payment intents — same host as Portal_App ACCOUNT_URL.
+ */
+export const ACCOUNT_SERVICE_URL =
+  'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/account-service';
+
+/**
  * Issue / complaints service — same host pattern as ProjectShell-1
  * REACT_APP_ISSUE_SERVICE_URL (sibling of profile-service).
  */

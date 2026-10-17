@@ -1,13 +1,20 @@
 import { ActionSheetIOS, Alert, Platform } from 'react-native';
-import type { AttachSource } from './documentPicker.helper';
+import {
+  pickerPresentDelayMs,
+  type AttachSource,
+} from './documentPicker.helper';
 
 /**
- * Portal-style source chooser — ActionSheet/Alert, NOT an RN Modal.
- * Presenting UIDocumentPicker from a Modal stack is what breaks Open on iOS.
+ * Source chooser — ActionSheet/Alert (not RN Modal), then delay before the
+ * system picker (same iOS race mitigation as prj-network-v2 CustomImagePicker).
  */
 export function chooseAttachSource(
   onSelect: (source: AttachSource) => void,
 ): void {
+  const select = (source: AttachSource) => {
+    setTimeout(() => onSelect(source), pickerPresentDelayMs);
+  };
+
   if (Platform.OS === 'ios') {
     ActionSheetIOS.showActionSheetWithOptions(
       {
@@ -15,18 +22,18 @@ export function chooseAttachSource(
         cancelButtonIndex: 0,
       },
       buttonIndex => {
-        if (buttonIndex === 1) onSelect('camera');
-        else if (buttonIndex === 2) onSelect('photos');
-        else if (buttonIndex === 3) onSelect('files');
+        if (buttonIndex === 1) select('camera');
+        else if (buttonIndex === 2) select('photos');
+        else if (buttonIndex === 3) select('files');
       },
     );
     return;
   }
 
   Alert.alert('Upload files', 'Choose a source', [
-    { text: 'Camera', onPress: () => onSelect('camera') },
-    { text: 'Photos', onPress: () => onSelect('photos') },
-    { text: 'Files', onPress: () => onSelect('files') },
+    { text: 'Camera', onPress: () => select('camera') },
+    { text: 'Photos', onPress: () => select('photos') },
+    { text: 'Files', onPress: () => select('files') },
     { text: 'Cancel', style: 'cancel' },
   ]);
 }
