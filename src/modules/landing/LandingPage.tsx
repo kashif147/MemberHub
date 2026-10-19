@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import { User } from 'lucide-react-native';
-import { Colors } from '../../theme/colors';
+import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
+import { Fingerprint, ShieldCheck } from 'lucide-react-native';
+import MemberHubIcon from '../../components/MemberHubIcon';
 import {
   signInAsBranchOfficer,
   signInWithMicrosoft,
@@ -18,7 +20,19 @@ import {
 import WebViewMicrosoftLogin from '../../common/WebViewMicrosoftLogin';
 import type { AppDispatch, RootState } from '../../store';
 
-/** Microsoft logo 2x2 squares */
+const { width: W, height: H } = Dimensions.get('window');
+
+/** Light theme from MemberHub Onboarding HTML (screen 1e) */
+const C = {
+  bg: '#F4F5FA',
+  surface: '#FCFCFF',
+  text: '#292B31',
+  accent: '#6A5DC0',
+  accent800: '#E7E5FE',
+  neutral300: '#595D6C',
+  divider: 'rgba(41,43,49,0.12)',
+};
+
 const MicrosoftLogo = () => (
   <View style={ms.grid}>
     <View style={[ms.sq, { backgroundColor: '#F25022' }]} />
@@ -30,8 +44,8 @@ const MicrosoftLogo = () => (
 
 const ms = StyleSheet.create({
   grid: {
-    width: 18,
-    height: 18,
+    width: 17.5,
+    height: 17.5,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 1.5,
@@ -40,7 +54,7 @@ const ms = StyleSheet.create({
 });
 
 /**
- * Welcome Back landing — Microsoft SSO like ProjectShell-1 Login.js.
+ * Sign in — Microsoft + Face ID, role note from CRM (HTML 1e).
  */
 const LandingPage = () => {
   const insets = useSafeAreaInsets();
@@ -64,12 +78,12 @@ const LandingPage = () => {
       const msg =
         typeof result?.message === 'string'
           ? result.message
-          : 'Microsoft authentication failed. You can continue with demo mode.';
+          : 'Microsoft authentication failed. You can continue with Face ID demo.';
       Alert.alert('Sign in failed', msg);
     }
   };
 
-  const onDemoSignIn = async () => {
+  const onFaceId = async () => {
     setBusy(true);
     await dispatch(signInAsBranchOfficer());
     setBusy(false);
@@ -79,46 +93,69 @@ const LandingPage = () => {
     <View
       style={[
         styles.screen,
-        { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 },
+        { paddingTop: insets.top + 56, paddingBottom: insets.bottom + 40 },
       ]}>
-      <View style={styles.card}>
-        <View style={styles.avatarRing}>
-          <View style={styles.avatar}>
-            <User size={36} color={Colors.white} strokeWidth={2} />
-          </View>
-        </View>
+      {/* radial-gradient(90% 40% at 80% 0%, #e7e5fe, #f4f5fa 70%) */}
+      <Svg width={W} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Defs>
+          <RadialGradient
+            id="signInGlow"
+            cx={W * 0.8}
+            cy={0}
+            rx={W * 0.9}
+            ry={H * 0.4}
+            fx={W * 0.8}
+            fy={0}
+            gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor="#E7E5FE" />
+            <Stop offset="0.7" stopColor="#F4F5FA" />
+            <Stop offset="1" stopColor="#F4F5FA" />
+          </RadialGradient>
+        </Defs>
+        <Rect width={W} height={H} fill="url(#signInGlow)" />
+      </Svg>
 
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Choose your preferred sign-in method</Text>
+      <View style={styles.iconWrap}>
+        <MemberHubIcon size={72} radiusRatio={0.236} />
+      </View>
 
+      <View style={styles.heading}>
+        <Text style={styles.title}>Sign in to MemberHub</Text>
+        <Text style={styles.subtitle}>Use your Microsoft account.</Text>
+      </View>
+
+      <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.msBtn, loading && styles.btnDisabled]}
+          style={[styles.secondaryBtn, loading && styles.btnDisabled]}
           disabled={loading}
           onPress={() => setShowMsLogin(true)}
           activeOpacity={0.88}>
           {loading ? (
-            <ActivityIndicator color={Colors.white} />
+            <ActivityIndicator color={C.accent} />
           ) : (
             <>
               <MicrosoftLogo />
-              <Text style={styles.msBtnText}>Sign in with Microsoft</Text>
+              <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
             </>
           )}
         </TouchableOpacity>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.divider} />
-          <Text style={styles.dividerText}>Or</Text>
-          <View style={styles.divider} />
-        </View>
-
         <TouchableOpacity
-          style={styles.demoBtn}
+          style={[styles.secondaryBtn, loading && styles.btnDisabled]}
           disabled={loading}
-          onPress={onDemoSignIn}
-          activeOpacity={0.85}>
-          <Text style={styles.demoBtnText}>Continue as Branch Officer (demo)</Text>
+          onPress={onFaceId}
+          activeOpacity={0.88}>
+          <Fingerprint size={18} color={C.text} strokeWidth={1.8} />
+          <Text style={styles.secondaryBtnText}>Use Face ID</Text>
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.note}>
+        <ShieldCheck size={18} color={C.accent} strokeWidth={1.8} style={styles.noteIcon} />
+        <Text style={styles.noteText}>
+          Your role (Regional Officer, Branch Officer or IRO) and the members you
+          can see are set in the CRM.
+        </Text>
       </View>
 
       <WebViewMicrosoftLogin
@@ -137,89 +174,73 @@ const LandingPage = () => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#EEF2F8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: Colors.white,
-    borderRadius: 20,
+    backgroundColor: C.bg,
     paddingHorizontal: 28,
-    paddingVertical: 36,
-    alignItems: 'center',
-    shadowColor: '#1A3A6B',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 6,
   },
-  avatarRing: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#E8F0FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
+  iconWrap: {
+    shadowColor: '#3D3470',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 8,
+    borderRadius: 17,
+    alignSelf: 'flex-start',
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#1B3A6B',
-    alignItems: 'center',
-    justifyContent: 'center',
+  heading: {
+    marginTop: 24,
+    gap: 6,
   },
   title: {
     fontSize: 26,
-    fontWeight: '700',
-    color: '#1B3A6B',
-    marginBottom: 8,
+    fontWeight: '500',
+    color: C.text,
   },
   subtitle: {
     fontSize: 14,
-    color: '#6B7C93',
-    marginBottom: 28,
-    textAlign: 'center',
+    color: C.neutral300,
   },
-  msBtn: {
+  actions: {
+    marginTop: 28,
+    gap: 14,
+  },
+  secondaryBtn: {
     width: '100%',
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    backgroundColor: '#2F6FED',
-    borderRadius: 10,
+    gap: 10,
+    backgroundColor: C.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: C.divider,
     paddingVertical: 14,
-    minHeight: 52,
+    paddingHorizontal: 16,
   },
-  msBtnText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  btnDisabled: { opacity: 0.75 },
-  dividerRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 22,
-    gap: 12,
-  },
-  divider: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
-  dividerText: { color: '#94A3B8', fontSize: 13, fontWeight: '500' },
-  demoBtn: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  demoBtnText: {
-    color: '#2F6FED',
+  secondaryBtnText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: C.text,
+  },
+  btnDisabled: { opacity: 0.7 },
+  note: {
+    marginTop: 'auto',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: '#E4E7F5',
+  },
+  noteIcon: { marginTop: 1 },
+  noteText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: C.neutral300,
   },
 });
 

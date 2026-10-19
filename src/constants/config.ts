@@ -67,4 +67,5 @@ export const STORAGE_KEYS = {
   REFRESH_TOKEN: 'memberhub_refresh_token',
   USER: 'memberhub_user',
   LOGIN: 'memberhub_login',
+  ONBOARDING_DONE: 'memberhub_onboarding_done',
 } as const;
