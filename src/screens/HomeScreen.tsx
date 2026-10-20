@@ -10,7 +10,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { Search, UserPlus } from 'lucide-react-native';
-import { Colors } from '../theme/colors';
+import { Colors, FontFamily, Radii } from '../theme';
 import { Header } from '../components/Header';
 import { CaseListCard, CaseListRow } from '../components/CaseListRow';
 import { CASES } from '../data/mockCases';
@@ -46,10 +46,7 @@ const HomeScreen = () => {
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
-  const memberCount = useMemo(() => {
-    // Prefer live scope size when known; fall back to Figma demo count
-    return MEMBER_COUNT;
-  }, []);
+  const memberCount = useMemo(() => MEMBER_COUNT, []);
 
   const openMembershipDrive = () => {
     navigation.navigate(STACKS.MEMBERSHIP_DRIVE);
@@ -70,9 +67,8 @@ const HomeScreen = () => {
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}>
-        {/* Search — Figma */}
         <View style={styles.searchBar}>
-          <Search size={18} color={Colors.textMuted} strokeWidth={2} />
+          <Search size={18} color={Colors.textPlaceholder} strokeWidth={2} />
           <TextInput
             style={styles.searchInput}
             placeholder={`Search ${memberCount} members`}
@@ -82,17 +78,15 @@ const HomeScreen = () => {
           />
         </View>
 
-        {/* Stats — Figma 3 equal cards, In arrears highlighted */}
         <View style={styles.statsRow}>
           <StatCard value={memberCount} label="Members" onPress={openMembers} />
           <StatCard value={2} label="In arrears" highlighted onPress={openMembers} />
           <StatCard value={1} label="Lapsed" onPress={openMembers} />
         </View>
 
-        {/* Drive in progress — Figma */}
         <View style={styles.driveCard}>
           <View style={styles.driveHeader}>
-            <Text style={styles.driveLabel}>DRIVE IN PROGRESS</Text>
+            <Text style={styles.driveLabel}>Drive in progress</Text>
             <View style={styles.liveBadge}>
               <Text style={styles.liveBadgeText}>Live</Text>
             </View>
@@ -121,9 +115,8 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Recent cases — Figma */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>RECENT CASES</Text>
+          <Text style={styles.sectionTitle}>Recent cases</Text>
           <TouchableOpacity onPress={openCases} hitSlop={8}>
             <Text style={styles.viewAll}>View all</Text>
           </TouchableOpacity>
@@ -170,9 +163,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 48,
+    borderRadius: Radii.md,
+    paddingHorizontal: 12,
+    height: 40,
     marginTop: 4,
     marginBottom: 14,
     borderWidth: 1,
@@ -180,7 +173,8 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontFamily: FontFamily.regular,
+    fontSize: 14,
     color: Colors.textPrimary,
     paddingVertical: 0,
   },
@@ -192,116 +186,115 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+    borderRadius: Radii.md,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: Colors.border,
   },
   statCardHighlighted: {
     borderWidth: 1.5,
     borderColor: Colors.primary,
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
+    fontSize: 24,
     color: Colors.textPrimary,
-    letterSpacing: -0.5,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '400',
+    fontFamily: FontFamily.regular,
+    fontSize: 11,
+    color: Colors.textMuted,
   },
   driveCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: Radii.md,
+    padding: 14,
+    gap: 10,
     marginBottom: 22,
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: Colors.border,
   },
   driveHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
   },
   driveLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
+    fontSize: 10,
     color: Colors.primary,
-    letterSpacing: 0.6,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   liveBadge: {
     backgroundColor: Colors.liveBadge,
-    borderRadius: 999,
+    borderRadius: Radii.sm + 2,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   liveBadgeText: {
-    fontSize: 12,
+    fontFamily: FontFamily.medium,
+    fontSize: 11,
     color: Colors.liveBadgeText,
-    fontWeight: '600',
   },
   driveTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
+    fontSize: 16,
     color: Colors.textPrimary,
-    marginBottom: 10,
-    letterSpacing: -0.2,
   },
   driveStats: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 14,
-    marginBottom: 16,
   },
   driveStat: {
-    fontSize: 13,
+    fontSize: 12,
   },
   driveStatBold: {
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
     color: Colors.textPrimary,
-    fontSize: 13,
+    fontSize: 16,
   },
   driveStatMuted: {
-    color: Colors.textSecondary,
-    fontWeight: '400',
+    fontFamily: FontFamily.regular,
+    color: Colors.textMuted,
+    fontSize: 12,
   },
   registerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: Radii.md,
+    minHeight: 40,
     backgroundColor: Colors.surface,
   },
   registerBtnText: {
-    fontSize: 15,
+    fontFamily: FontFamily.medium,
+    fontSize: 14,
     color: Colors.primary,
-    fontWeight: '600',
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'baseline',
+    marginBottom: 4,
   },
   sectionTitle: {
+    fontFamily: FontFamily.medium,
     fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
+    color: Colors.textPlaceholder,
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   viewAll: {
-    fontSize: 14,
+    fontFamily: FontFamily.medium,
+    fontSize: 12,
     color: Colors.primary,
-    fontWeight: '600',
   },
 });
 

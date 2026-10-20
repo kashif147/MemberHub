@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, ChevronLeft, LayoutGrid } from 'lucide-react-native';
-import { Colors } from '../theme/colors';
+import { Colors, FontFamily, Radii } from '../theme';
 
 interface HeaderProps {
   title: string;
@@ -44,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({
         </View>
       </View>
 
-      {/* Figma: title + bell on the same row */}
       <View style={styles.titleRow}>
         <Text style={styles.title}>{title}</Text>
         <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
@@ -71,7 +70,7 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: Radii.md,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -87,16 +86,16 @@ const styles = StyleSheet.create({
   roleIcon: {
     width: 18,
     height: 18,
-    borderRadius: 4,
+    borderRadius: Radii.sm,
     backgroundColor: Colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
   },
   roleText: {
+    fontFamily: FontFamily.medium,
     fontSize: 12,
     color: Colors.primary,
-    fontWeight: '500',
     flexShrink: 1,
   },
   titleRow: {
@@ -107,15 +106,15 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
+    fontFamily: FontFamily.medium,
     fontSize: 30,
-    fontWeight: '700',
     color: Colors.textPrimary,
-    letterSpacing: -0.6,
+    letterSpacing: -0.45,
   },
   bellButton: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: Radii.md,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,

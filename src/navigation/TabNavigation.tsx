@@ -14,7 +14,7 @@ import MembersStack from './MembersStack';
 import CasesStack from './CasesStack';
 import MoreScreen from '../screens/MoreScreen';
 import CreateSheet from '../components/CreateSheet';
-import { Colors } from '../theme/colors';
+import { Colors, FontFamily, Radii } from '../theme';
 import { STACKS } from '../enums/ScreenEnums';
 
 const Tab = createBottomTabNavigator();
@@ -79,7 +79,7 @@ function CustomTabBar({ state, navigation }: any) {
             styles.tabLabel,
             {
               color,
-              fontWeight: isFocused ? '700' : '500',
+              fontFamily: isFocused ? FontFamily.medium : FontFamily.regular,
             },
           ]}>
           {label}
@@ -154,17 +154,12 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     backgroundColor: Colors.tabBar,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     borderTopColor: Colors.tabBarBorder,
     paddingTop: 8,
     paddingHorizontal: 4,
     alignItems: 'flex-end',
     minHeight: 56,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 12,
   },
   tabItem: {
     flex: 1,
@@ -175,6 +170,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
+    fontFamily: FontFamily.regular,
   },
   fabWrapper: {
     width: 68,
@@ -186,17 +182,17 @@ const styles = StyleSheet.create({
   fab: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: Radii.pill,
     backgroundColor: Colors.surface,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowColor: '#292B31',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
   },
 });
 

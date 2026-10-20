@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
 import MemberHubIcon from '../../components/MemberHubIcon';
+import { Colors, FontFamily } from '../../theme';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -48,9 +49,9 @@ const SplashScreen = () => {
             fx={W * 0.7}
             fy={H * 0.1}
             gradientUnits="userSpaceOnUse">
-            <Stop offset="0" stopColor="#968AE0" />
-            <Stop offset="0.55" stopColor="#5D5294" />
-            <Stop offset="1" stopColor="#2B2741" />
+            <Stop offset="0" stopColor={Colors.splashGlow} />
+            <Stop offset="0.55" stopColor={Colors.splashMid} />
+            <Stop offset="1" stopColor={Colors.splashBase} />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width={W} height={H} fill="url(#splashBg)" />
@@ -89,7 +90,7 @@ const SplashScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#2B2741',
+    backgroundColor: Colors.splashBase,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -109,15 +110,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
+    fontFamily: FontFamily.medium,
     fontSize: 32,
-    fontWeight: '500',
     letterSpacing: -0.32,
-    color: '#F5F4FF',
+    color: Colors.accentSoft,
   },
   subtitle: {
+    fontFamily: FontFamily.regular,
     fontSize: 14,
-    fontWeight: '400',
-    color: '#D2CEFD',
+    color: Colors.accentSoft2,
   },
   footer: {
     position: 'absolute',
@@ -138,11 +139,12 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: 2,
-    backgroundColor: '#F5F4FF',
+    backgroundColor: Colors.accentSoft,
   },
   footerText: {
+    fontFamily: FontFamily.regular,
     fontSize: 11,
-    color: '#B5ABFC',
+    color: Colors.primaryMuted,
   },
 });
 

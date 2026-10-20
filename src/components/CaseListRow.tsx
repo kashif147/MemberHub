@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Colors } from '../theme/colors';
+import { Colors, FontFamily, Radii } from '../theme';
 import type { CaseStatus } from '../data/mockCases';
 
 type Props = {
@@ -100,40 +100,40 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 22,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 0,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     backgroundColor: Colors.transparent,
+    gap: 10,
   },
   rowLast: {
     borderBottomWidth: 0,
   },
   left: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 0,
+    gap: 2,
   },
   title: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontFamily: FontFamily.regular,
+    fontSize: 14,
     color: Colors.textPrimary,
-    marginBottom: 4,
-    letterSpacing: -0.1,
   },
   meta: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '400',
+    fontFamily: FontFamily.regular,
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: Radii.sm + 2,
     flexShrink: 0,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FontFamily.medium,
+    fontSize: 11,
   },
 });
 

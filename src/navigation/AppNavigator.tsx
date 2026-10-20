@@ -9,7 +9,7 @@ import LandingPage from '../modules/landing/LandingPage';
 import { validation } from '../services/auth.services';
 import { useLookup } from '../contexts/lookupContext';
 import { STORAGE_KEYS } from '../constants/config';
-import { Colors } from '../theme/colors';
+import { Colors } from '../theme';
 import type { AppDispatch, RootState } from '../store';
 
 const AppTheme = {
@@ -24,7 +24,7 @@ const AppTheme = {
   },
 };
 
-const MIN_SPLASH_MS = 1800;
+const MIN_SPLASH_MS = 3000;
 
 /**
  * Root gate: splash → onboarding (first launch) → Landing if signed out → tabs.

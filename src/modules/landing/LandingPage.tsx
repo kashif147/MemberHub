@@ -18,18 +18,18 @@ import {
   signInWithMicrosoft,
 } from '../../services/auth.services';
 import WebViewMicrosoftLogin from '../../common/WebViewMicrosoftLogin';
+import { Colors, FontFamily, Radii } from '../../theme';
 import type { AppDispatch, RootState } from '../../store';
 
 const { width: W, height: H } = Dimensions.get('window');
 
-/** Light theme from MemberHub Onboarding HTML (screen 1e) */
 const C = {
-  bg: '#F4F5FA',
-  surface: '#FCFCFF',
-  text: '#292B31',
-  accent: '#6A5DC0',
-  accent800: '#E7E5FE',
-  neutral300: '#595D6C',
+  bg: Colors.background,
+  surface: Colors.surface,
+  text: Colors.textPrimary,
+  accent: Colors.primary,
+  accent800: Colors.primaryLight,
+  neutral300: Colors.textSecondary,
   divider: 'rgba(41,43,49,0.12)',
 };
 
@@ -191,11 +191,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
+    fontFamily: FontFamily.medium,
     fontSize: 26,
-    fontWeight: '500',
     color: C.text,
   },
   subtitle: {
+    fontFamily: FontFamily.regular,
     fontSize: 14,
     color: C.neutral300,
   },
@@ -211,15 +212,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     backgroundColor: C.surface,
-    borderRadius: 8,
+    borderRadius: Radii.md,
     borderWidth: 1,
     borderColor: C.divider,
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
   secondaryBtnText: {
+    fontFamily: FontFamily.medium,
     fontSize: 14,
-    fontWeight: '500',
     color: C.text,
   },
   btnDisabled: { opacity: 0.7 },
@@ -230,14 +231,15 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: Radii.lg,
     backgroundColor: C.surface,
     borderWidth: 1,
-    borderColor: '#E4E7F5',
+    borderColor: Colors.border,
   },
   noteIcon: { marginTop: 1 },
   noteText: {
     flex: 1,
+    fontFamily: FontFamily.regular,
     fontSize: 12,
     lineHeight: 18,
     color: C.neutral300,

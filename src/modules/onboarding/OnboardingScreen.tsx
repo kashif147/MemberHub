@@ -18,24 +18,25 @@ import {
   ArrowRight,
   Check,
 } from 'lucide-react-native';
+import { Colors } from '../../theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PAGE_PAD = 20;
 const HERO_W = SCREEN_W - PAGE_PAD * 2;
 
-/** Light theme — MemberHub Onboarding HTML */
+/** Alias prototype tokens used in this screen */
 const C = {
-  bg: '#F4F5FA',
-  surface: '#FCFCFF',
-  text: '#292B31',
-  accent: '#6A5DC0',
-  accent800: '#E7E5FE',
-  accent900: '#F5F4FF',
-  accent300: '#D2CEFD',
-  neutral300: '#595D6C',
-  neutral400: '#75798C',
-  neutral700: '#CFD3E5',
-  neutral800: '#E4E7F5',
+  bg: Colors.background,
+  surface: Colors.surface,
+  text: Colors.textPrimary,
+  accent: Colors.primary,
+  accent800: Colors.primaryLight,
+  accent900: Colors.accentSoft,
+  accent300: Colors.accentSoft2,
+  neutral300: Colors.textSecondary,
+  neutral400: Colors.textMuted,
+  neutral700: Colors.borderMuted,
+  neutral800: Colors.border,
   divider: 'rgba(41,43,49,0.12)',
 };
 
