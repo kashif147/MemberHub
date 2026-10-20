@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 0,
-    paddingVertical: 10,
+    paddingVertical: 13,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
     backgroundColor: Colors.transparent,
@@ -113,16 +113,16 @@ const styles = StyleSheet.create({
   left: {
     flex: 1,
     marginRight: 0,
-    gap: 2,
+    gap: 3,
   },
   title: {
     fontFamily: FontFamily.regular,
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textPrimary,
   },
   meta: {
     fontFamily: FontFamily.regular,
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textMuted,
   },
   badge: {

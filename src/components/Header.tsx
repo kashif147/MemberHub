@@ -20,25 +20,57 @@ export const Header: React.FC<HeaderProps> = ({
   onBack,
 }) => {
   const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, 24) + 8;
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.topRow}>
-        {showBack ? (
+  if (showBack) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.backHeaderRow}>
           <TouchableOpacity
             style={styles.backBtn}
             onPress={onBack}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={22} color={Colors.textPrimary} strokeWidth={2.2} />
+            <ChevronLeft size={20} color={Colors.textPrimary} strokeWidth={2.2} />
           </TouchableOpacity>
-        ) : null}
 
+          <View style={styles.backCenterCol}>
+            <View style={styles.roleContainer}>
+              <View style={styles.roleIcon}>
+                <LayoutGrid size={11} color={Colors.primary} strokeWidth={2.4} />
+              </View>
+              <Text
+                style={styles.roleText}
+                numberOfLines={1}
+                ellipsizeMode="tail">
+                {role} · {branch}
+              </Text>
+            </View>
+            <Text style={styles.titleWithBack} numberOfLines={1}>
+              {title}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
+            <Bell size={18} color={Colors.textPrimary} strokeWidth={2} />
+            <View style={styles.bellBadge} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { paddingTop: topPadding }]}>
+      <View style={styles.topRow}>
         <View style={styles.roleContainer}>
           <View style={styles.roleIcon}>
             <LayoutGrid size={11} color={Colors.primary} strokeWidth={2.4} />
           </View>
-          <Text style={styles.roleText} numberOfLines={1}>
+          <Text
+            style={styles.roleText}
+            numberOfLines={1}
+            ellipsizeMode="tail">
             {role} · {branch}
           </Text>
         </View>
@@ -58,8 +90,18 @@ export const Header: React.FC<HeaderProps> = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.background,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
+  },
+  backHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backCenterCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   topRow: {
     flexDirection: 'row',
@@ -68,20 +110,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: Radii.md,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   roleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
     minWidth: 0,
+    marginBottom: 2,
+    paddingTop: 2,
   },
   roleIcon: {
     width: 18,
@@ -91,10 +135,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
+    flexShrink: 0,
   },
   roleText: {
     fontFamily: FontFamily.medium,
     fontSize: 12,
+    lineHeight: 16,
     color: Colors.primary,
     flexShrink: 1,
   },
@@ -111,10 +157,16 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     letterSpacing: -0.45,
   },
+  titleWithBack: {
+    fontFamily: FontFamily.medium,
+    fontSize: 26,
+    color: Colors.textPrimary,
+    letterSpacing: -0.3,
+  },
   bellButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radii.md,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -123,8 +175,8 @@ const styles = StyleSheet.create({
   },
   bellBadge: {
     position: 'absolute',
-    top: 9,
-    right: 9,
+    top: 8,
+    right: 8,
     width: 8,
     height: 8,
     borderRadius: 4,

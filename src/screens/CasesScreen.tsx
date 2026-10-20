@@ -149,8 +149,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   tabRow: {
     flexDirection: 'row',
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 9,
     alignItems: 'center',
     borderRadius: 10,
   },
@@ -180,8 +180,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
-    gap: 5,
-    paddingBottom: 30,
+    gap: 10,
+    paddingBottom: 40,
   },
   listEmpty: {
     flexGrow: 1,

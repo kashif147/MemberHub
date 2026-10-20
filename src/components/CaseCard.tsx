@@ -78,9 +78,9 @@ export const CaseCard = ({ item, onPress }: Props) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },

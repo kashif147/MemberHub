@@ -12,6 +12,11 @@ export type Member = {
   joined?: string;
   paymentMethod?: string;
   grade?: string;
+  workLocation?: string;
+  region?: string;
+  category?: string;
+  phone?: string;
+  lastPaid?: string;
 };
 
 export const MEMBERS: Member[] = [
@@ -21,12 +26,17 @@ export const MEMBERS: Member[] = [
     name: 'Aoife Brennan',
     memberNo: 'B00114',
     role: 'Staff Nurse',
-    branch: 'Beaumont ED',
+    branch: 'Beaumont',
+    workLocation: 'Beaumont Hospital – ED',
+    region: 'Dublin North East',
+    category: 'General (all grades)',
+    phone: '087 214 5530',
+    lastPaid: '25 Sep 2026',
     status: 'Active',
     arrears: null,
-    joined: 'Mar 2018',
-    paymentMethod: 'Direct debit',
-    grade: 'General (all grades)',
+    joined: 'Mar 2014',
+    paymentMethod: 'Payroll deduction',
+    grade: 'Staff Nurse',
   },
   {
     id: '2',
@@ -34,12 +44,17 @@ export const MEMBERS: Member[] = [
     name: 'Ciarán Doyle',
     memberNo: 'B00237',
     role: 'CNM2',
-    branch: 'Beaumont ED',
+    branch: 'Beaumont',
+    workLocation: 'Beaumont Hospital – ED',
+    region: 'Dublin North East',
+    category: 'General (all grades)',
+    phone: '086 551 9021',
+    lastPaid: '01 Jul 2026',
     status: 'Active',
     arrears: '€61.40',
     joined: 'Jun 2011',
     paymentMethod: 'Direct debit',
-    grade: 'General (all grades)',
+    grade: 'CNM2',
   },
   {
     id: '3',
