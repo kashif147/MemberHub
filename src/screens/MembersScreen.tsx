@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 40,
-    gap: 10,
+    gap: 6,
     flexGrow: 1,
   },
   memberCard: {

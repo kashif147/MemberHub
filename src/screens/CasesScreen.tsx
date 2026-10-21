@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   listContent: {
-    gap: 10,
+    gap: 6,
     paddingBottom: 40,
   },
   listEmpty: {

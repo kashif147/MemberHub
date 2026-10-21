@@ -64,7 +64,7 @@ export const CaseListRow = ({
           styles.badge,
           {
             backgroundColor: badge.bg,
-            borderWidth: badge.bordered ? 1.5 : 0,
+            borderWidth: badge.bordered ? 1 : 0,
             borderColor: Colors.primary,
           },
         ]}>

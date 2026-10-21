@@ -54,7 +54,7 @@ export const CaseCard = ({ item, onPress }: Props) => {
             styles.badge,
             {
               backgroundColor: badge.bg,
-              borderWidth: badge.bordered ? 1.5 : 0,
+              borderWidth: badge.bordered ? 1 : 0,
               borderColor: Colors.primary,
             },
           ]}>
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: 7,
     flexShrink: 0,
   },
   badgeText: {
