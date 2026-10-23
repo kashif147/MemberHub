@@ -59,7 +59,15 @@ export const loadCasesList = async (): Promise<CaseItem[]> => {
   assertOk(res, 'Failed to load cases');
   return (res.data || [])
     .map(mapIssueToCaseItem)
-    .filter(c => Boolean(c.id));
+    .filter((c: CaseItem) => Boolean(c.id));
+};
+
+export type CaseActivityAttachment = {
+  index: number;
+  id: string;
+  name: string;
+  createdAt: string;
+  url?: string;
 };
 
 export type CaseActivityItem = {
@@ -68,6 +76,8 @@ export type CaseActivityItem = {
   activityType: string;
   createdAt: string;
   createdBy: string;
+  /** Attachments logged on this activity (Portal CaseDetail activity cards). */
+  attachments: CaseActivityAttachment[];
 };
 
 export type CaseHistoryItem = {
@@ -76,6 +86,8 @@ export type CaseHistoryItem = {
   action: string;
   createdAt: string;
   actor: string;
+  entityType?: string;
+  changedFields?: Array<Record<string, any>>;
 };
 
 export type CaseAttachmentItem = {
@@ -126,24 +138,55 @@ export const loadCaseDetail = async (
   ]);
 
   const activities: CaseActivityItem[] = (activitiesRes.data || []).map(
-    (a: any, i: number) => ({
-      id: String(a?._id || a?.id || `act-${i}`),
-      body: String(a?.body || a?.subject || '').trim() || '—',
-      activityType: String(a?.activityType || 'NOTE'),
-      createdAt: formatCaseDateTime(
-        a?.interactionDate || a?.createdAt || a?.createdOn,
-      ),
-      createdBy: String(a?.createdBy || a?.actorEmail || a?.actorId || '—'),
-    }),
+    (a: any, i: number) => {
+      const activityId = String(a?._id || a?.id || `act-${i}`);
+      const rawAttachments = Array.isArray(a?.attachments)
+        ? a.attachments
+        : Array.isArray(a?.files)
+          ? a.files
+          : [];
+      return {
+        id: activityId,
+        body: String(a?.body || a?.subject || '').trim() || '—',
+        activityType: String(a?.activityType || 'NOTE'),
+        createdAt: formatCaseDateTime(
+          a?.interactionDate || a?.createdAt || a?.createdOn,
+        ),
+        createdBy: String(a?.createdBy || a?.actorEmail || a?.actorId || '—'),
+        attachments: rawAttachments.map((item: any, attachmentIndex: number) => ({
+          index:
+            typeof item?.index === 'number' ? item.index : attachmentIndex,
+          id: String(item?._id || item?.id || `${activityId}-${attachmentIndex}`),
+          name: String(
+            item?.filename ||
+              item?.fileName ||
+              item?.originalName ||
+              item?.name ||
+              `Attachment ${attachmentIndex + 1}`,
+          ),
+          createdAt: formatCaseDateTime(
+            item?.createdAt ||
+              item?.uploadedAt ||
+              a?.interactionDate ||
+              a?.createdAt,
+          ),
+          url: String(item?.url || item?.downloadUrl || '').trim() || undefined,
+        })),
+      };
+    },
   );
 
   const history: CaseHistoryItem[] = (historyRes.data || []).map(
     (h: any, i: number) => ({
       id: String(h?._id || h?.entityId || `hist-${i}`),
       summary: String(h?.summary || h?.action || 'Update').trim(),
-      action: String(h?.action || ''),
+      action: String(h?.action || '').toUpperCase(),
       createdAt: formatCaseDateTime(h?.createdAt || h?.createdOn),
-      actor: String(h?.actorEmail || h?.actorId || '—'),
+      actor: String(
+        h?.actorEmail || h?.actorName || h?.actorId || '—',
+      ),
+      entityType: h?.entityType ? String(h.entityType) : undefined,
+      changedFields: Array.isArray(h?.changedFields) ? h.changedFields : [],
     }),
   );
 
@@ -285,24 +328,50 @@ export const uploadCaseAttachments = async (
 
 /**
  * CRM CasesDetails handlePostActivity — log a NOTE on an open issue.
- * MemberHub BO uses the staff issue-service activity API (not portal comments).
+ * Optional file mirrors Portal CaseDetail comment + attachment (upload after NOTE).
  */
-export const addCaseNote = async (issueId: string, noteText: string) => {
+export const addCaseNote = async (
+  issueId: string,
+  noteText: string,
+  file?: PendingAttachment | null,
+) => {
   if (!issueId) throw new Error('Missing case id');
   const body = String(noteText || '').trim();
-  if (!body) throw new Error('Note text is required');
+  if (!body && !file) {
+    throw new Error('Please enter a comment or attach a file.');
+  }
 
-  const res = await createIssueActivityRequest(issueId, {
-    activityType: 'NOTE',
-    subject: null,
-    body,
-    interactionDate: new Date().toISOString(),
-    pertinentToFileReview: false,
-    sendNotification: true,
-    visibleToMember: false,
-  });
-  assertOk(res, extractUploadErrorMessage(res, 'Failed to add note'));
-  return res.data;
+  let created: any = null;
+  if (body) {
+    const res = await createIssueActivityRequest(issueId, {
+      activityType: 'NOTE',
+      subject: null,
+      body,
+      interactionDate: new Date().toISOString(),
+      pertinentToFileReview: false,
+      sendNotification: true,
+      visibleToMember: false,
+    });
+    assertOk(res, extractUploadErrorMessage(res, 'Failed to add comment'));
+    created = res.data;
+  }
+
+  let failedUploads: string[] = [];
+  if (file) {
+    const uploadResult = await uploadCaseAttachments(issueId, [file]);
+    failedUploads = uploadResult.failedUploads;
+  }
+
+  return { created, failedUploads };
+};
+
+/** History action badge color — same palette as Portal getHistoryActionColor. */
+export const getHistoryActionColor = (action?: string) => {
+  const value = String(action || '').toUpperCase();
+  if (value === 'CREATED') return '#6A5DC0';
+  if (value === 'UPDATED') return '#FF8B00';
+  if (value === 'DELETED') return '#DE350B';
+  return '#6B778C';
 };
 
 /**

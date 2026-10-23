@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Alert,
   TextInput,
   Linking,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from 'react-native';
 import {
@@ -19,26 +19,32 @@ import {
   useRoute,
   type RouteProp,
 } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import {
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   Download,
   Eye,
+  FileText,
   Paperclip,
   Plus,
   Send,
+  X,
 } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import {
   addCaseNote,
+  getHistoryActionColor,
   loadCaseDetail,
   resolveCaseAttachmentUrl,
   uploadCaseAttachments,
+  type CaseActivityAttachment,
   type CaseActivityItem,
   type CaseAttachmentItem,
   type CaseDetailBundle,
   type CaseHistoryItem,
+  type PendingAttachment,
 } from '../../services/issues.services';
 import {
   pickCaseAttachmentsFromSource,
@@ -46,7 +52,7 @@ import {
 } from '../../helpers/documentPicker.helper';
 import { chooseAttachSource } from '../../helpers/attachSource.helper';
 import { displayValue, formatIssueEnumLabel } from '../../helpers/cases.helper';
-import { Colors } from '../../theme/colors';
+import { Colors, FontFamily, Radii } from '../../theme';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { CaseStatus } from '../../data/mockCases';
 import type { RootState } from '../../store';
@@ -110,12 +116,14 @@ const FieldRow = ({
 const SectionCard = ({
   title,
   subtitle,
+  badge,
   expanded,
   onToggle,
   children,
 }: {
   title: string;
   subtitle?: string;
+  badge?: string | null;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -126,22 +134,114 @@ const SectionCard = ({
       onPress={onToggle}
       activeOpacity={0.75}>
       <View style={styles.sectionHeaderText}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {badge ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+        {subtitle && !expanded ? (
+          <Text style={styles.sectionSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       {expanded ? (
-        <ChevronUp size={18} color={Colors.textMuted} strokeWidth={2.2} />
-      ) : (
         <ChevronDown size={18} color={Colors.textMuted} strokeWidth={2.2} />
+      ) : (
+        <ChevronRight size={18} color={Colors.textMuted} strokeWidth={2.2} />
       )}
     </TouchableOpacity>
     {expanded ? <View style={styles.sectionBody}>{children}</View> : null}
   </View>
 );
 
+/** Portal CaseDetail AttachmentItem — thumbnail card in a wrap grid. */
+const AttachmentItem = ({
+  name,
+  createdAt,
+  busy,
+  onView,
+  onDownload,
+}: {
+  name: string;
+  createdAt?: string;
+  busy?: boolean;
+  onView?: () => void;
+  onDownload?: () => void;
+}) => (
+  <View style={styles.attachmentCard}>
+    <View style={styles.attachmentPreview}>
+      {busy ? (
+        <ActivityIndicator size="small" color={Colors.danger} />
+      ) : (
+        <FileText size={22} color={Colors.danger} strokeWidth={2} />
+      )}
+    </View>
+    <Text style={styles.attachmentCardName} numberOfLines={1}>
+      {name || 'Attachment'}
+    </Text>
+    {createdAt ? (
+      <Text style={styles.attachmentCardDate}>{createdAt}</Text>
+    ) : null}
+    <View style={styles.attachmentCardActions}>
+      {onView ? (
+        <TouchableOpacity
+          onPress={onView}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={busy}
+          accessibilityLabel="View attachment">
+          <Eye size={16} color={Colors.textPrimary} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : null}
+      {onDownload ? (
+        <TouchableOpacity
+          onPress={onDownload}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ marginLeft: onView ? 14 : 0 }}
+          disabled={busy}
+          accessibilityLabel="Download attachment">
+          <Download size={16} color={Colors.textPrimary} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  </View>
+);
+
+/** Portal CaseDetail UploadNewItem. */
+const UploadNewItem = ({
+  uploading,
+  disabled,
+  onPress,
+}: {
+  uploading: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) => (
+  <TouchableOpacity
+    style={styles.uploadNewCard}
+    onPress={onPress}
+    disabled={disabled}
+    activeOpacity={0.85}>
+    <View style={styles.uploadNewPreview}>
+      {uploading ? (
+        <ActivityIndicator color={Colors.white} size="small" />
+      ) : (
+        <Plus size={28} color={Colors.white} strokeWidth={2.4} />
+      )}
+    </View>
+    <Text style={styles.uploadNewLabel}>
+      {uploading ? 'Uploading…' : 'Upload New'}
+    </Text>
+  </TouchableOpacity>
+);
+
 const CaseDetailScreen = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, typeof STACKS.CASE_DETAIL>>();
+  const insets = useSafeAreaInsets();
   const user = useSelector((s: RootState) => s.auth.user);
   const issueId = route.params?.issueId;
 
@@ -152,17 +252,44 @@ const CaseDetailScreen = () => {
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [attachmentsOpen, setAttachmentsOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
-  const [noteText, setNoteText] = useState('');
-  const [postingNote, setPostingNote] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [commentFile, setCommentFile] = useState<PendingAttachment | null>(
+    null,
+  );
+  const [submittingComment, setSubmittingComment] = useState(false);
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(
     null,
   );
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
   const isClosed = bundle?.issue?.issueStatusUi === 'Closed';
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, event => {
+      if (Platform.OS === 'android') {
+        setKeyboardHeight(0);
+        return;
+      }
+      setKeyboardHeight(event?.endCoordinates?.height || 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -194,7 +321,6 @@ const CaseDetailScreen = () => {
     }, [load]),
   );
 
-  /** Same as Portal_App CaseDetail upload — ActionSheet, not RN Modal. */
   const onAttachSource = async (source: AttachSource) => {
     if (!issueId || uploadingAttachment) return;
     try {
@@ -227,12 +353,37 @@ const CaseDetailScreen = () => {
     chooseAttachSource(onAttachSource);
   };
 
-  /** CRM CasesDetails openAttachment — view & download both open SAS URL. */
-  const openAttachment = async (file: CaseAttachmentItem) => {
+  const onCommentAttachSource = async (source: AttachSource) => {
+    try {
+      const next = await pickCaseAttachmentsFromSource(source);
+      if (!next?.[0]) return;
+      setCommentFile(next[0]);
+    } catch (err: any) {
+      Alert.alert(
+        'Attachments',
+        err?.message || 'Could not open the file picker.',
+      );
+    }
+  };
+
+  const onCommentAttachPress = () => {
+    if (isClosed) {
+      Alert.alert('Case closed', 'Cannot add a comment to a closed case.');
+      return;
+    }
+    chooseAttachSource(onCommentAttachSource);
+  };
+
+  const openAttachment = async (file: {
+    id: string;
+    url?: string;
+    activityId?: string;
+    index?: number;
+  }) => {
     if (openingAttachmentId) return;
     setOpeningAttachmentId(file.id);
     try {
-      const url = await resolveCaseAttachmentUrl(file);
+      const url = await resolveCaseAttachmentUrl(file as CaseAttachmentItem);
       const can = await Linking.canOpenURL(url);
       if (!can) {
         throw new Error('Unable to open this file on this device.');
@@ -248,27 +399,49 @@ const CaseDetailScreen = () => {
     }
   };
 
-  /** CRM CasesDetails handlePostActivity — NOTE */
-  const onAddNote = async () => {
-    if (!issueId || postingNote) return;
+  const openActivityAttachment = async (
+    activity: CaseActivityItem,
+    attachment: CaseActivityAttachment,
+  ) => {
+    await openAttachment({
+      id: attachment.id,
+      url: attachment.url,
+      activityId: activity.id,
+      index: attachment.index,
+    });
+  };
+
+  /** Portal CaseDetail comment bar — NOTE + optional file. */
+  const onSubmitComment = async () => {
+    if (!issueId || submittingComment) return;
     if (isClosed) {
-      Alert.alert('Case closed', 'Cannot add a note to a closed case.');
+      Alert.alert('Case closed', 'Cannot add a comment to a closed case.');
       return;
     }
-    const trimmed = noteText.trim();
-    if (!trimmed) {
-      Alert.alert('Validation', 'Please enter a note.');
+    const trimmed = commentBody.trim();
+    if (!trimmed && !commentFile) {
+      Alert.alert('Validation', 'Please enter a comment or attach a file.');
       return;
     }
-    setPostingNote(true);
+
+    setSubmittingComment(true);
     try {
-      await addCaseNote(issueId, trimmed);
-      setNoteText('');
+      const result = await addCaseNote(issueId, trimmed, commentFile);
+      setCommentBody('');
+      setCommentFile(null);
       await load(true);
+      if (result.failedUploads?.length) {
+        Alert.alert(
+          'Partial success',
+          `Comment saved, but attachment failed:\n${result.failedUploads.join(
+            '\n',
+          )}`,
+        );
+      }
     } catch (err: any) {
-      Alert.alert('Note', err?.message || 'Failed to add note');
+      Alert.alert('Comment', err?.message || 'Failed to add comment');
     } finally {
-      setPostingNote(false);
+      setSubmittingComment(false);
     }
   };
 
@@ -318,6 +491,7 @@ const CaseDetailScreen = () => {
     issue.internalReferenceNumber !== '—'
       ? issue.internalReferenceNumber
       : 'Case detail';
+  const attachmentCount = attachments.length;
 
   return (
     <View style={styles.screen}>
@@ -329,10 +503,7 @@ const CaseDetailScreen = () => {
         onBack={() => navigation.goBack()}
       />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
+      <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.content}
@@ -390,84 +561,31 @@ const CaseDetailScreen = () => {
 
           <SectionCard
             title="Attachments"
+            badge={attachmentCount > 0 ? String(attachmentCount) : null}
             subtitle={
-              attachments.length
-                ? `${attachments.length} file${
-                    attachments.length === 1 ? '' : 's'
-                  }`
+              attachmentCount > 0
+                ? `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}`
                 : 'No files attached'
             }
             expanded={attachmentsOpen}
             onToggle={() => setAttachmentsOpen(v => !v)}>
-            {attachments.length === 0 ? (
-              <Text style={styles.emptyInline}>No attachments.</Text>
-            ) : (
-              attachments.map((file: CaseAttachmentItem) => {
-                const busy = openingAttachmentId === file.id;
-                return (
-                  <View key={file.id} style={styles.attachmentRow}>
-                    <Paperclip
-                      size={16}
-                      color={Colors.primary}
-                      strokeWidth={2}
-                    />
-                    <View style={styles.attachmentText}>
-                      <Text style={styles.attachmentName} numberOfLines={1}>
-                        {file.name}
-                      </Text>
-                      <Text style={styles.attachmentMeta}>{file.createdAt}</Text>
-                    </View>
-                    {busy ? (
-                      <ActivityIndicator size="small" color={Colors.primary} />
-                    ) : (
-                      <View style={styles.attachmentActions}>
-                        <TouchableOpacity
-                          style={styles.iconBtn}
-                          onPress={() => openAttachment(file)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel="View attachment">
-                          <Eye
-                            size={18}
-                            color={Colors.textSecondary}
-                            strokeWidth={2.2}
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.iconBtn}
-                          onPress={() => openAttachment(file)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel="Download attachment">
-                          <Download
-                            size={18}
-                            color={Colors.textSecondary}
-                            strokeWidth={2.2}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                );
-              })
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.uploadZone,
-                (isClosed || uploadingAttachment) && styles.uploadZoneDisabled,
-              ]}
-              onPress={onUploadPress}
-              disabled={isClosed || uploadingAttachment}
-              activeOpacity={0.75}>
-              {uploadingAttachment ? (
-                <ActivityIndicator color={Colors.primary} />
-              ) : (
-                <Paperclip size={22} color={Colors.primary} strokeWidth={2} />
-              )}
-              <Text style={styles.uploadTitle}>
-                {uploadingAttachment ? 'Uploading…' : 'Add more attachments'}
-              </Text>
-              <Text style={styles.uploadHint}>PDF, PNG, JPEG or DOCX</Text>
-            </TouchableOpacity>
+            <View style={styles.attachmentGrid}>
+              {attachments.map((file: CaseAttachmentItem) => (
+                <AttachmentItem
+                  key={file.id}
+                  name={file.name}
+                  createdAt={file.createdAt}
+                  busy={openingAttachmentId === file.id}
+                  onView={() => openAttachment(file)}
+                  onDownload={() => openAttachment(file)}
+                />
+              ))}
+              <UploadNewItem
+                uploading={uploadingAttachment}
+                disabled={isClosed || uploadingAttachment}
+                onPress={onUploadPress}
+              />
+            </View>
           </SectionCard>
 
           <SectionCard
@@ -477,49 +595,39 @@ const CaseDetailScreen = () => {
             }`}
             expanded={activityOpen}
             onToggle={() => setActivityOpen(v => !v)}>
-            {!isClosed ? (
-              <View style={styles.noteComposer}>
-                <TextInput
-                  style={styles.noteInput}
-                  value={noteText}
-                  onChangeText={setNoteText}
-                  placeholder="Add a note…"
-                  placeholderTextColor={Colors.textPlaceholder}
-                  multiline
-                  textAlignVertical="top"
-                  editable={!postingNote}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.noteSendBtn,
-                    (!noteText.trim() || postingNote) && { opacity: 0.55 },
-                  ]}
-                  onPress={onAddNote}
-                  disabled={!noteText.trim() || postingNote}
-                  activeOpacity={0.85}>
-                  {postingNote ? (
-                    <ActivityIndicator color={Colors.white} size="small" />
-                  ) : (
-                    <Send size={18} color={Colors.white} strokeWidth={2.2} />
-                  )}
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
             {activities.length === 0 ? (
               <Text style={styles.emptyInline}>No activity yet.</Text>
             ) : (
               activities.map((a: CaseActivityItem) => (
-                <View key={a.id} style={styles.timelineCard}>
-                  <Text style={styles.timelineType}>
-                    {formatIssueEnumLabel(a.activityType)}
+                <View key={a.id} style={styles.activityCard}>
+                  <View style={styles.activityMeta}>
+                    <Text style={styles.activityDate}>
+                      {a.createdAt || 'Date unavailable'}
+                    </Text>
+                    <Text style={styles.activityType}>
+                      {formatIssueEnumLabel(a.activityType)}
+                    </Text>
+                  </View>
+                  {a.body && a.body !== '—' ? (
+                    <Text style={styles.bodyText}>{stripHtml(a.body)}</Text>
+                  ) : null}
+                  <Text style={styles.activityBy}>
+                    {a.createdBy || '—'}
                   </Text>
-                  <Text style={styles.timelineBody}>
-                    {stripHtml(a.body) || '—'}
-                  </Text>
-                  <Text style={styles.timelineMeta}>
-                    {a.createdBy} · {a.createdAt}
-                  </Text>
+                  {a.attachments?.length ? (
+                    <View style={styles.attachmentGrid}>
+                      {a.attachments.map(att => (
+                        <AttachmentItem
+                          key={`${a.id}-${att.index}`}
+                          name={att.name}
+                          createdAt={att.createdAt}
+                          busy={openingAttachmentId === att.id}
+                          onView={() => openActivityAttachment(a, att)}
+                          onDownload={() => openActivityAttachment(a, att)}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               ))
             )}
@@ -527,39 +635,138 @@ const CaseDetailScreen = () => {
 
           <SectionCard
             title="History"
-            subtitle={`${history.length} event${history.length === 1 ? '' : 's'}`}
+            subtitle={`${history.length} event${
+              history.length === 1 ? '' : 's'
+            }`}
             expanded={historyOpen}
             onToggle={() => setHistoryOpen(v => !v)}>
             {history.length === 0 ? (
               <Text style={styles.emptyInline}>No history yet.</Text>
             ) : (
-              history.map((h: CaseHistoryItem) => (
-                <View key={h.id} style={styles.timelineCard}>
-                  <Text style={styles.timelineBody}>{h.summary}</Text>
-                  <Text style={styles.timelineMeta}>
-                    {h.actor} · {h.createdAt}
-                  </Text>
-                </View>
-              ))
+              history.map((h: CaseHistoryItem) => {
+                const actionColor = getHistoryActionColor(h.action);
+                return (
+                  <View key={h.id} style={styles.historyCard}>
+                    <View style={styles.historyHeader}>
+                      <Text style={styles.historySummary}>{h.summary}</Text>
+                      {h.action ? (
+                        <View
+                          style={[
+                            styles.historyActionBadge,
+                            { backgroundColor: `${actionColor}18` },
+                          ]}>
+                          <Text
+                            style={[
+                              styles.historyActionText,
+                              { color: actionColor },
+                            ]}>
+                            {String(h.action).toLowerCase()}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.historyMeta}>
+                      {h.actor || 'Unknown actor'}
+                      {' · '}
+                      {h.createdAt || 'Date unavailable'}
+                    </Text>
+                    {h.entityType ? (
+                      <Text style={styles.historyEntity}>
+                        {String(h.entityType).toLowerCase()}
+                      </Text>
+                    ) : null}
+                    {h.changedFields?.length
+                      ? h.changedFields.map((field, index) => {
+                          const label =
+                            field?.field ||
+                            field?.name ||
+                            field?.key ||
+                            `Field ${index + 1}`;
+                          const from = field?.from ?? field?.oldValue ?? '—';
+                          const to = field?.to ?? field?.newValue ?? '—';
+                          return (
+                            <Text
+                              key={`${h.id}-field-${index}`}
+                              style={styles.historyField}>
+                              {label}: {String(from)} → {String(to)}
+                            </Text>
+                          );
+                        })
+                      : null}
+                  </View>
+                );
+              })
             )}
           </SectionCard>
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      {!isClosed ? (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={onUploadPress}
-          disabled={uploadingAttachment}
-          activeOpacity={0.85}
-          accessibilityLabel="Add attachment">
-          {uploadingAttachment ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <Plus size={26} color={Colors.white} strokeWidth={2.4} />
-          )}
-        </TouchableOpacity>
-      ) : null}
+        {/* Portal CaseDetail comment bar */}
+        <View
+          style={[
+            styles.commentBar,
+            {
+              marginBottom: keyboardHeight,
+              paddingBottom:
+                keyboardHeight > 0 ? 10 : Math.max(insets.bottom, 10),
+            },
+          ]}>
+          {commentFile ? (
+            <View style={styles.fileChip}>
+              <Text style={styles.fileChipText} numberOfLines={1}>
+                {commentFile.name}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setCommentFile(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={16} color={Colors.textPrimary} strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {isClosed ? (
+            <Text style={styles.resolvedHint}>
+              Case is closed — comments are disabled.
+            </Text>
+          ) : null}
+
+          <View style={styles.commentInputRow}>
+            <TouchableOpacity
+              style={styles.attachIconBtn}
+              onPress={onCommentAttachPress}
+              disabled={isClosed || submittingComment}
+              accessibilityLabel="Attach file">
+              <Paperclip
+                size={22}
+                color={Colors.textMuted}
+                strokeWidth={2.1}
+              />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.commentInput}
+              value={commentBody}
+              onChangeText={setCommentBody}
+              placeholder="Add a comment..."
+              placeholderTextColor={Colors.textMuted}
+              multiline
+              editable={!isClosed && !submittingComment}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendIconBtn,
+                submittingComment && styles.sendIconBtnDisabled,
+              ]}
+              onPress={onSubmitComment}
+              disabled={submittingComment || isClosed}
+              accessibilityLabel="Send comment">
+              {submittingComment ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Send size={16} color={Colors.white} strokeWidth={2.2} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </View>
   );
 };
@@ -567,7 +774,7 @@ const CaseDetailScreen = () => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingBottom: 88, paddingTop: 4 },
+  content: { paddingHorizontal: 16, paddingBottom: 24, paddingTop: 4 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -576,6 +783,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   centerText: {
+    fontFamily: FontFamily.regular,
     fontSize: 14,
     color: Colors.textSecondary,
     textAlign: 'center',
@@ -588,12 +796,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.primary,
   },
-  retryText: { color: Colors.primary, fontWeight: '700', fontSize: 13 },
+  retryText: {
+    color: Colors.primary,
+    fontFamily: FontFamily.medium,
+    fontSize: 13,
+  },
   heroCard: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   heroTop: {
     flexDirection: 'row',
@@ -605,7 +819,7 @@ const styles = StyleSheet.create({
   category: {
     flex: 1,
     fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
     color: Colors.primary,
     letterSpacing: 0.4,
   },
@@ -614,60 +828,92 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  statusBadgeText: { fontSize: 12, fontWeight: '600' },
+  statusBadgeText: {
+    fontSize: 12,
+    fontFamily: FontFamily.medium,
+  },
   heroTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
     color: Colors.textPrimary,
     marginBottom: 6,
   },
-  heroMeta: { fontSize: 12, color: Colors.textSecondary },
+  heroMeta: {
+    fontSize: 12,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   cardLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FontFamily.medium,
     color: Colors.textSecondary,
     marginBottom: 8,
   },
   bodyText: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
+    fontFamily: FontFamily.regular,
     color: Colors.textPrimary,
   },
   sectionCard: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    gap: 10,
   },
-  sectionHeaderText: { flex: 1 },
+  sectionHeaderText: { flex: 1, paddingRight: 8 },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
     color: Colors.textPrimary,
   },
   sectionSubtitle: {
     marginTop: 2,
-    fontSize: 12,
+    fontSize: 13,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    backgroundColor: Colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontFamily: FontFamily.medium,
     color: Colors.textSecondary,
   },
   sectionBody: {
     paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.borderLight,
+    borderTopColor: Colors.border,
+    paddingTop: 8,
   },
   fieldRow: {
     paddingVertical: 12,
@@ -679,142 +925,238 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginBottom: 4,
-    fontWeight: '500',
+    fontFamily: FontFamily.medium,
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
   },
   fieldValue: {
     fontSize: 15,
     color: Colors.textPrimary,
-    fontWeight: '500',
+    fontFamily: FontFamily.medium,
   },
   emptyInline: {
-    paddingVertical: 12,
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
-  attachmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.borderLight,
-  },
-  attachmentText: { flex: 1 },
-  attachmentName: {
+    paddingVertical: 8,
     fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  attachmentMeta: {
-    marginTop: 2,
-    fontSize: 12,
+    fontFamily: FontFamily.regular,
     color: Colors.textSecondary,
   },
-  attachmentActions: {
+  attachmentGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    // 8px between columns → 3 equal cards fill the row
+    columnGap: 8,
+    rowGap: 10,
+    paddingVertical: 2,
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  attachmentCard: {
+    // (100% - 2×8px gaps) / 3 ≈ 31.5% — three files per row
+    width: '31.5%',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radii.md,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  attachmentPreview: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surfaceMuted,
+    marginBottom: 6,
   },
-  noteComposer: {
+  attachmentCardName: {
+    width: '100%',
+    fontSize: 10,
+    fontFamily: FontFamily.medium,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  attachmentCardDate: {
+    marginTop: 2,
+    fontSize: 8,
+    fontFamily: FontFamily.regular,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+  attachmentCardActions: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadNewCard: {
+    width: '31.5%',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  uploadNewPreview: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.md,
+    backgroundColor: Colors.accentInk,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  uploadNewLabel: {
+    width: '100%',
+    fontSize: 10,
+    fontFamily: FontFamily.medium,
+    color: Colors.accentInk,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  activityCard: {
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  activityMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  activityDate: {
+    fontSize: 12,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  activityType: {
+    fontSize: 11,
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
+  },
+  activityBy: {
+    marginTop: 6,
+    fontSize: 12,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  historyCard: {
+    backgroundColor: Colors.background,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  historySummary: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FontFamily.medium,
+    color: Colors.textPrimary,
+  },
+  historyActionBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  historyActionText: {
+    fontSize: 11,
+    fontFamily: FontFamily.medium,
+    textTransform: 'capitalize',
+  },
+  historyMeta: {
+    marginTop: 6,
+    fontSize: 12,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  historyEntity: {
+    marginTop: 4,
+    fontSize: 11,
+    fontFamily: FontFamily.regular,
+    color: Colors.textMuted,
+    textTransform: 'capitalize',
+  },
+  historyField: {
+    marginTop: 6,
+    fontSize: 12,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+  },
+  commentBar: {
+    backgroundColor: Colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
+  resolvedHint: {
+    fontSize: 11,
+    fontFamily: FontFamily.regular,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  commentInputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    marginTop: 4,
-    marginBottom: 4,
   },
-  noteInput: {
+  attachIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentInput: {
     flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    minHeight: 36,
+    maxHeight: 100,
+    backgroundColor: Colors.background,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     fontSize: 14,
+    fontFamily: FontFamily.regular,
     color: Colors.textPrimary,
-    backgroundColor: Colors.surface,
   },
-  noteSendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  sendIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  uploadZone: {
-    marginTop: 12,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: Colors.primaryMuted,
+  sendIconBtnDisabled: {
+    opacity: 0.6,
+  },
+  fileChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.primaryLight,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
     borderRadius: 16,
-    paddingVertical: 22,
-    paddingHorizontal: 16,
-    alignItems: 'center',
+    marginBottom: 8,
+    maxWidth: '100%',
+    gap: 6,
   },
-  uploadZoneDisabled: {
-    opacity: 0.55,
-  },
-  uploadTitle: {
-    marginTop: 10,
-    fontSize: 15,
-    fontWeight: '700',
+  fileChipText: {
     color: Colors.primary,
-  },
-  uploadHint: {
-    marginTop: 4,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#1A1A2E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  timelineCard: {
-    backgroundColor: Colors.surfaceMuted,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 10,
-  },
-  timelineType: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 4,
-    letterSpacing: 0.3,
-  },
-  timelineBody: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-    lineHeight: 20,
-  },
-  timelineMeta: {
-    marginTop: 6,
-    fontSize: 12,
-    color: Colors.textSecondary,
+    fontSize: 13,
+    fontFamily: FontFamily.medium,
+    maxWidth: 200,
   },
 });
 
