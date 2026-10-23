@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/config';
+import {
+  PKCE_STATE_KEY,
+  PKCE_STORAGE_KEY,
+} from '../constants/azureAd';
 import type { AuthUser } from '../store/initialState';
+
+const PKCE_REDIRECT_URI_KEY = 'memberhub_pkce_redirect_uri';
 
 export const setBearerToken = async (token: string) => {
   await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
@@ -36,6 +42,9 @@ export const clearAuthStorage = async () => {
     AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN),
     AsyncStorage.removeItem(STORAGE_KEYS.USER),
     AsyncStorage.removeItem(STORAGE_KEYS.LOGIN),
+    AsyncStorage.removeItem(PKCE_STORAGE_KEY),
+    AsyncStorage.removeItem(PKCE_STATE_KEY),
+    AsyncStorage.removeItem(PKCE_REDIRECT_URI_KEY),
   ]);
 };
 

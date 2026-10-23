@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,22 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { Search, UserPlus } from 'lucide-react-native';
 import { Colors, FontFamily, Radii } from '../theme';
 import { Header } from '../components/Header';
 import { CaseListCard, CaseListRow } from '../components/CaseListRow';
-import { CASES } from '../data/mockCases';
+import { loadCasesList } from '../services/issues.services';
 import { STACKS } from '../enums/ScreenEnums';
+import type { CaseItem } from '../data/mockCases';
 import type { RootState } from '../store';
 
 const MEMBER_COUNT = 8;
+const RECENT_CASES_LIMIT = 4;
 
 const StatCard = ({
   value,
@@ -44,9 +48,36 @@ const HomeScreen = () => {
   const navigation = useNavigation<any>();
   const user = useSelector((s: RootState) => s.auth.user);
 
+  const [recentCases, setRecentCases] = useState<CaseItem[]>([]);
+  const [casesLoading, setCasesLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [casesError, setCasesError] = useState<string | null>(null);
+
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
   const memberCount = useMemo(() => MEMBER_COUNT, []);
+
+  const loadRecentCases = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setCasesLoading(true);
+    setCasesError(null);
+    try {
+      const rows = await loadCasesList();
+      setRecentCases(rows.slice(0, RECENT_CASES_LIMIT));
+    } catch (e: any) {
+      setCasesError(e?.message || 'Failed to load cases');
+      setRecentCases([]);
+    } finally {
+      setCasesLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecentCases(false);
+    }, [loadRecentCases]),
+  );
 
   const openMembershipDrive = () => {
     navigation.navigate(STACKS.MEMBERSHIP_DRIVE);
@@ -57,7 +88,9 @@ const HomeScreen = () => {
   };
 
   const openCases = () => {
-    navigation.getParent()?.navigate(STACKS.CASES);
+    navigation.getParent()?.navigate(STACKS.CASES, {
+      screen: STACKS.CASES_LIST,
+    });
   };
 
   return (
@@ -66,7 +99,14 @@ const HomeScreen = () => {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}>
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadRecentCases(true)}
+            tintColor={Colors.primary}
+          />
+        }>
         <View style={styles.searchBar}>
           <Search size={18} color={Colors.textPlaceholder} strokeWidth={2} />
           <TextInput
@@ -122,27 +162,48 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <CaseListCard>
-          {CASES.slice(0, 3).map((item, index, arr) => (
-            <CaseListRow
-              key={item.id}
-              title={item.title}
-              caseNo={item.caseNo}
-              member={item.member}
-              status={item.status}
-              last={index === arr.length - 1}
-              onPress={() =>
-                navigation.getParent()?.navigate(STACKS.CASES, {
-                  screen: STACKS.CASE_DETAIL,
-                  params: {
-                    issueId: item.id,
-                    title: item.caseNo,
-                  },
-                })
-              }
-            />
-          ))}
-        </CaseListCard>
+        {casesLoading ? (
+          <View style={styles.casesState}>
+            <ActivityIndicator color={Colors.primary} />
+            <Text style={styles.casesStateText}>Loading cases…</Text>
+          </View>
+        ) : recentCases.length === 0 ? (
+          <View style={styles.casesState}>
+            <Text style={styles.casesStateText}>
+              {casesError || 'No cases yet.'}
+            </Text>
+            {casesError ? (
+              <TouchableOpacity
+                style={styles.retryBtn}
+                onPress={() => loadRecentCases(false)}
+                activeOpacity={0.8}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : (
+          <CaseListCard>
+            {recentCases.map((item, index, arr) => (
+              <CaseListRow
+                key={item.id}
+                title={item.title}
+                caseNo={item.caseNo}
+                member={item.member}
+                status={item.status}
+                last={index === arr.length - 1}
+                onPress={() =>
+                  navigation.getParent()?.navigate(STACKS.CASES, {
+                    screen: STACKS.CASE_DETAIL,
+                    params: {
+                      issueId: item.id,
+                      title: item.caseNo,
+                    },
+                  })
+                }
+              />
+            ))}
+          </CaseListCard>
+        )}
       </ScrollView>
     </View>
   );
@@ -295,6 +356,30 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.medium,
     fontSize: 12,
     color: Colors.primary,
+  },
+  casesState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
+    gap: 10,
+  },
+  casesStateText: {
+    fontFamily: FontFamily.regular,
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  retryText: {
+    fontFamily: FontFamily.medium,
+    color: Colors.primary,
+    fontSize: 13,
   },
 });
 

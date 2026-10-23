@@ -1,8 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { Bell, ChevronLeft, LayoutGrid } from 'lucide-react-native';
 import { Colors, FontFamily, Radii } from '../theme';
+import { useNotificationBadge } from '../contexts/notificationContext';
+import { STACKS } from '../enums/ScreenEnums';
 
 interface HeaderProps {
   title: string;
@@ -10,6 +13,8 @@ interface HeaderProps {
   branch?: string;
   showBack?: boolean;
   onBack?: () => void;
+  /** Hide bell (e.g. on the Notifications screen itself). */
+  hideBell?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,9 +23,32 @@ export const Header: React.FC<HeaderProps> = ({
   branch = 'Beaumont & Mater branches',
   showBack = false,
   onBack,
+  hideBell = false,
 }) => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const { unreadCount } = useNotificationBadge();
   const topPadding = Math.max(insets.top, 24) + 8;
+  const showBadge = unreadCount > 0;
+
+  const openNotifications = () => {
+    navigation.navigate(STACKS.MORE, {
+      screen: STACKS.NOTIFICATIONS,
+    });
+  };
+
+  const bell = hideBell ? (
+    <View style={styles.bellSpacer} />
+  ) : (
+    <TouchableOpacity
+      style={styles.bellButton}
+      activeOpacity={0.7}
+      onPress={openNotifications}
+      accessibilityLabel="Notifications">
+      <Bell size={18} color={Colors.textPrimary} strokeWidth={2} />
+      {showBadge ? <View style={styles.bellBadge} /> : null}
+    </TouchableOpacity>
+  );
 
   if (showBack) {
     return (
@@ -31,13 +59,21 @@ export const Header: React.FC<HeaderProps> = ({
             onPress={onBack}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <ChevronLeft size={20} color={Colors.textPrimary} strokeWidth={2.2} />
+            <ChevronLeft
+              size={20}
+              color={Colors.textPrimary}
+              strokeWidth={2.2}
+            />
           </TouchableOpacity>
 
           <View style={styles.backCenterCol}>
             <View style={styles.roleContainer}>
               <View style={styles.roleIcon}>
-                <LayoutGrid size={11} color={Colors.primary} strokeWidth={2.4} />
+                <LayoutGrid
+                  size={11}
+                  color={Colors.primary}
+                  strokeWidth={2.4}
+                />
               </View>
               <Text
                 style={styles.roleText}
@@ -51,10 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
-            <Bell size={18} color={Colors.textPrimary} strokeWidth={2} />
-            <View style={styles.bellBadge} />
-          </TouchableOpacity>
+          {bell}
         </View>
       </View>
     );
@@ -78,10 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       <View style={styles.titleRow}>
         <Text style={styles.title}>{title}</Text>
-        <TouchableOpacity style={styles.bellButton} activeOpacity={0.7}>
-          <Bell size={18} color={Colors.textPrimary} strokeWidth={2} />
-          <View style={styles.bellBadge} />
-        </TouchableOpacity>
+        {bell}
       </View>
     </View>
   );
@@ -172,6 +202,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bellSpacer: {
+    width: 38,
+    height: 38,
   },
   bellBadge: {
     position: 'absolute',

@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 import { Paperclip, X } from 'lucide-react-native';
 import { Header } from '../../components/Header';
@@ -32,23 +33,44 @@ import {
   type AttachSource,
 } from '../../helpers/documentPicker.helper';
 import { chooseAttachSource } from '../../helpers/attachSource.helper';
-import { toSelectOptions } from '../../helpers/issuePayload.helper';
-import { Colors } from '../../theme/colors';
+import {
+  buildOrderedMemberIds,
+  isMemberOnMemberComplaintType,
+  isMemberOnServiceProviderComplaintType,
+  toSelectOptions,
+} from '../../helpers/issuePayload.helper';
+import { Colors, FontFamily, Radii } from '../../theme';
+import { STACKS } from '../../enums/ScreenEnums';
+import type { CasesStackParamList } from '../../navigation/CasesStack';
 import type { Member } from '../../data/mockMembers';
 import type { RootState } from '../../store';
 
 type ComplainantMode = 'member' | 'myself';
 
+/**
+ * New case — CRM CreateCasesDrawer / ComplaintFields people model:
+ * 1. Owner (creator)     → owner.userId
+ * 2. Complaint type      → drives MOM / MOSP related fields
+ * 3. Complainant         → memberIds[0]
+ * 4. Related member      → memberIds[1]
+ * 5. Service provider    → when MOSP
+ */
 const NewCaseScreen = () => {
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<CasesStackParamList>>();
   const user = useSelector((s: RootState) => s.auth.user);
+
+  const goToCasesList = () => {
+    navigation.navigate(STACKS.CASES_LIST);
+  };
 
   const [mode, setMode] = useState<ComplainantMode>('member');
   const [member, setMember] = useState<Member | null>(null);
   const [relatedMember, setRelatedMember] = useState<Member | null>(null);
   const [complaintType, setComplaintType] = useState('');
+  const [serviceProvider, setServiceProvider] = useState('');
   const [description, setDescription] = useState('');
-  const [issueDate, setIssueDate] = useState('');
+  const [issueDate, setIssueDate] = useState(() => new Date().toISOString());
   const [uploadedFiles, setUploadedFiles] = useState<PendingAttachment[]>([]);
   const [complaintTypeOptions, setComplaintTypeOptions] = useState<
     Array<{ label: string; value: string }>
@@ -66,6 +88,29 @@ const NewCaseScreen = () => {
     return no ? `${name} (${no})` : name;
   }, [user]);
 
+  const ownerLabel = useMemo(() => {
+    const name = user?.name || role;
+    return `${name} · case owner`;
+  }, [user?.name, role]);
+
+  const isMom = useMemo(
+    () => isMemberOnMemberComplaintType(complaintType, complaintTypeOptions),
+    [complaintType, complaintTypeOptions],
+  );
+
+  const isMosp = useMemo(
+    () =>
+      isMemberOnServiceProviderComplaintType(
+        complaintType,
+        complaintTypeOptions,
+      ),
+    [complaintType, complaintTypeOptions],
+  );
+
+  /** Related member required for Member On Member (CRM ComplaintFields). */
+  const relatedRequired = isMom;
+  const serviceProviderRequired = isMosp;
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -75,9 +120,7 @@ const NewCaseScreen = () => {
         if (cancelled) return;
         setComplaintTypeOptions(toSelectOptions(lookups.complaintTypes || []));
         const branchOrigin = (lookups.origins || []).find(o =>
-          /branch|rep|officer/i.test(
-            `${o.code} ${o.displayName}`,
-          ),
+          /branch|rep|officer/i.test(`${o.code} ${o.displayName}`),
         );
         setDefaultOrigin(
           branchOrigin?.code || lookups.origins?.[0]?.code || null,
@@ -87,7 +130,8 @@ const NewCaseScreen = () => {
           setComplaintTypeOptions([]);
           Alert.alert(
             'Lookups',
-            e?.message || 'Could not load complaint types. You can still try later.',
+            e?.message ||
+            'Could not load complaint types. You can still try later.',
           );
         }
       } finally {
@@ -101,13 +145,25 @@ const NewCaseScreen = () => {
 
   useEffect(() => {
     setMember(null);
-    setRelatedMember(null);
+    if (mode === 'myself') {
+      // keep related; complainant is self
+    }
   }, [mode]);
+
+  useEffect(() => {
+    if (!isMosp) {
+      setServiceProvider('');
+    }
+  }, [isMosp]);
 
   const memberRequired = mode === 'member';
   const errMember = showValidation && memberRequired && !member;
+  const errRelated = showValidation && relatedRequired && !relatedMember;
+  const errServiceProvider =
+    showValidation && serviceProviderRequired && !serviceProvider.trim();
   const errType = showValidation && !complaintType;
   const errDesc = showValidation && !description.trim();
+  const errDate = showValidation && !issueDate;
 
   const onAttachSource = async (source: AttachSource) => {
     try {
@@ -129,25 +185,55 @@ const NewCaseScreen = () => {
     }
   };
 
-  /** ActionSheet/Alert — not RN Modal (Modal breaks iOS document Open). */
   const onUploadPress = () => chooseAttachSource(onAttachSource);
 
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const onComplaintTypeSelect = (value: string) => {
+    setComplaintType(value);
+  };
+
+  const resolveComplainantId = (): string | null => {
+    if (mode === 'member') return member?.id || null;
+    return user?.id || null;
+  };
+
   const onSave = async () => {
     setShowValidation(true);
-    if (memberRequired && !member) {
-      Alert.alert('Required', 'Please select a member as complainant.');
-      return;
-    }
     if (!complaintType) {
       Alert.alert('Required', 'Please select a complaint type.');
       return;
     }
+    if (memberRequired && !member) {
+      Alert.alert('Required', 'Please select a member as complainant.');
+      return;
+    }
+    if (relatedRequired && !relatedMember) {
+      Alert.alert(
+        'Required',
+        'Member On Member requires a related member (the person the complaint is about).',
+      );
+      return;
+    }
+    if (serviceProviderRequired && !serviceProvider.trim()) {
+      Alert.alert('Required', 'Please enter a service provider.');
+      return;
+    }
     if (!description.trim()) {
       Alert.alert('Required', 'Please enter a description.');
+      return;
+    }
+    if (!issueDate) {
+      Alert.alert('Required', 'Please select the date received.');
+      return;
+    }
+    if (!defaultOrigin) {
+      Alert.alert(
+        'Required',
+        'Origin could not be loaded. Please try again in a moment.',
+      );
       return;
     }
     if (!user?.id || user.id === 'bo-demo') {
@@ -158,17 +244,16 @@ const NewCaseScreen = () => {
       return;
     }
 
-    const memberIds: string[] = [];
-    if (mode === 'member' && member?.id) {
-      memberIds.push(member.id);
-    } else if (mode === 'myself') {
-      if (user?.id) {
-        memberIds.push(user.id);
-      }
-      if (relatedMember?.id) {
-        memberIds.push(relatedMember.id);
-      }
+    const complainantId = resolveComplainantId();
+    if (!complainantId) {
+      Alert.alert('Required', 'Please select a complainant.');
+      return;
     }
+
+    const memberIds = buildOrderedMemberIds({
+      complainantId,
+      relatedMemberId: relatedMember?.id || null,
+    });
 
     setSaving(true);
     try {
@@ -176,10 +261,11 @@ const NewCaseScreen = () => {
         {
           description,
           complaintType,
-          dateReceived: issueDate || null,
+          dateReceived: issueDate,
           memberIds,
           origin: defaultOrigin,
           ownerUserId: user.id,
+          serviceProvider: isMosp ? serviceProvider.trim() : null,
         },
         uploadedFiles,
       );
@@ -190,13 +276,13 @@ const NewCaseScreen = () => {
           `Case created, but some attachments failed:\n${failedUploads.join(
             '\n',
           )}\n\nAllowed: PDF, PNG, JPEG, DOCX.`,
-          [{ text: 'OK', onPress: () => navigation.goBack() }],
+          [{ text: 'OK', onPress: goToCasesList }],
         );
         return;
       }
 
       Alert.alert('Case created', 'The new case has been saved.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: goToCasesList },
       ]);
     } catch (e: any) {
       Alert.alert('Could not create case', e?.message || 'Please try again.');
@@ -212,7 +298,7 @@ const NewCaseScreen = () => {
         role={role}
         branch={branch}
         showBack
-        onBack={() => navigation.goBack()}
+        onBack={goToCasesList}
       />
 
       <KeyboardAvoidingView
@@ -224,6 +310,51 @@ const NewCaseScreen = () => {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
+          {/* Owner / creator */}
+          {/* <FieldLabel label="Raised by (owner)" />
+          <TextField
+            value={ownerLabel}
+            onChangeText={() => {}}
+            editable={false}
+          />
+          <Text style={styles.hint}>
+            You are the case owner in CRM. Complainant and related member are
+            selected below.
+          </Text> */}
+
+          {/* Complaint type — drives MOM / MOSP fields like CRM ComplaintFields */}
+          {/* <FieldLabel label="Complaint type" required error={errType} />
+          {loadingLookups ? (
+            <View style={styles.lookupRow}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.lookupText}>Loading types…</Text>
+            </View>
+          ) : (
+            <SelectField
+              value={complaintType}
+              placeholder="Select complaint type"
+              options={complaintTypeOptions}
+              onSelect={onComplaintTypeSelect}
+              error={errType}
+            />
+          )}
+          {isMom ? (
+            <View style={styles.typeBanner}>
+              <Text style={styles.typeBannerText}>
+                Member On Member — select complainant and the related member
+                (person the complaint is about).
+              </Text>
+            </View>
+          ) : null}
+          {isMosp ? (
+            <View style={styles.typeBanner}>
+              <Text style={styles.typeBannerText}>
+                Member On Service Provider — enter the service provider below.
+              </Text>
+            </View>
+          ) : null} */}
+
+          {/* Complainant — memberIds[0] */}
           <FieldLabel label="Complainant" required />
           <View style={styles.segment}>
             <TouchableOpacity
@@ -257,9 +388,10 @@ const NewCaseScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
+
           <Text style={styles.hint}>
             {mode === 'member'
-              ? 'The member is recorded as complainant; you are logged as the rep who raised it.'
+              ? 'The member is recorded as complainant; you remain the case owner.'
               : 'You are recorded as the complainant for this case.'}
           </Text>
 
@@ -277,18 +409,11 @@ const NewCaseScreen = () => {
               />
             </>
           ) : (
-            <>
-              <TextField
-                value={selfLabel}
-                onChangeText={() => {}}
-                editable={false}
-              />
-              <FieldLabel label="Related member" />
-              <MemberPickerField
-                value={relatedMember}
-                onSelect={setRelatedMember}
-              />
-            </>
+            <TextField
+              value={selfLabel}
+              onChangeText={() => { }}
+              editable={false}
+            />
           )}
 
           <FieldLabel label="Complaint type" required error={errType} />
@@ -300,19 +425,65 @@ const NewCaseScreen = () => {
           ) : (
             <SelectField
               value={complaintType}
-              placeholder="Select type"
+              placeholder="Select complaint type"
               options={complaintTypeOptions}
-              onSelect={setComplaintType}
+              onSelect={onComplaintTypeSelect}
               error={errType}
             />
           )}
+          {isMom ? (
+            <View style={styles.typeBanner}>
+              <Text style={styles.typeBannerText}>
+                Member On Member — select complainant and the related member
+                (person the complaint is about).
+              </Text>
+            </View>
+          ) : null}
+          {isMosp ? (
+            <View style={styles.typeBanner}>
+              <Text style={styles.typeBannerText}>
+                Member On Service Provider — enter the service provider below.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Related member — always available; required for MOM */}
+          <FieldLabel
+            label="Related member"
+            required={relatedRequired}
+            error={errRelated}
+          />
+          <Text style={styles.hint}>
+            {relatedRequired
+              ? 'Required for Member On Member — the person the complaint is about.'
+              : 'Optional — add a member this case is related to (linked as CRM related member).'}
+          </Text>
+          <MemberPickerField
+            value={relatedMember}
+            onSelect={setRelatedMember}
+            error={errRelated}
+          />
+
+          {/* MOSP — Service Provider (CRM ComplaintFields) */}
+          {isMosp ? (
+            <>
+              <FieldLabel
+                label="Service provider"
+                required
+                error={errServiceProvider}
+              />
+              <TextField
+                value={serviceProvider}
+                onChangeText={setServiceProvider}
+                placeholder="Enter service provider"
+                error={errServiceProvider}
+              />
+            </>
+          ) : null}
 
           <FieldLabel label="Description" required error={errDesc} />
           <View
-            style={[
-              styles.textAreaWrap,
-              errDesc && styles.textAreaError,
-            ]}>
+            style={[styles.textAreaWrap, errDesc && styles.textAreaError]}>
             <TextInput
               style={styles.textArea}
               value={description}
@@ -325,9 +496,12 @@ const NewCaseScreen = () => {
           </View>
 
           <DatePicker
-            label="Issue date"
-            name="issueDate"
+            label="Date received"
+            name="dateReceived"
             value={issueDate}
+            required
+            showValidation={showValidation}
+            error={errDate}
             disableAgeValidation
             onChange={e => setIssueDate(e.target.value)}
           />
@@ -339,9 +513,7 @@ const NewCaseScreen = () => {
             activeOpacity={0.75}>
             <Paperclip size={22} color={Colors.primary} strokeWidth={2} />
             <Text style={styles.uploadTitle}>Upload files</Text>
-            <Text style={styles.uploadHint}>
-              PDF, PNG, JPEG or DOCX
-            </Text>
+            <Text style={styles.uploadHint}>PDF, PNG, JPEG or DOCX</Text>
             {uploadedFiles.length > 0 ? (
               <Text style={styles.uploadCount}>
                 {uploadedFiles.length} file
@@ -406,7 +578,7 @@ const styles = StyleSheet.create({
   segmentBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: Radii.md,
     borderWidth: 1.5,
     borderColor: Colors.border,
     backgroundColor: Colors.surface,
@@ -417,18 +589,35 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryLight,
   },
   segmentText: {
+    fontFamily: FontFamily.medium,
     fontSize: 14,
-    fontWeight: '600',
     color: Colors.textSecondary,
   },
   segmentTextActive: {
     color: Colors.primary,
   },
   hint: {
+    fontFamily: FontFamily.regular,
     fontSize: 12,
     color: Colors.textSecondary,
     lineHeight: 17,
     marginBottom: 16,
+  },
+  typeBanner: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: Radii.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+    marginTop: -4,
+  },
+  typeBannerText: {
+    fontFamily: FontFamily.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.accentInk,
   },
   lookupRow: {
     flexDirection: 'row',
@@ -437,6 +626,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   lookupText: {
+    fontFamily: FontFamily.regular,
     fontSize: 13,
     color: Colors.textSecondary,
   },
@@ -444,7 +634,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    borderRadius: Radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     minHeight: 110,
@@ -454,6 +644,7 @@ const styles = StyleSheet.create({
     borderColor: '#C0392B',
   },
   textArea: {
+    fontFamily: FontFamily.regular,
     fontSize: 15,
     color: Colors.textPrimary,
     minHeight: 90,
@@ -464,7 +655,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: Colors.primaryMuted,
     backgroundColor: Colors.primaryLight,
-    borderRadius: 16,
+    borderRadius: Radii.lg,
     paddingVertical: 28,
     paddingHorizontal: 16,
     alignItems: 'center',
@@ -472,20 +663,21 @@ const styles = StyleSheet.create({
   },
   uploadTitle: {
     marginTop: 10,
+    fontFamily: FontFamily.semiBold,
     fontSize: 15,
-    fontWeight: '700',
     color: Colors.primary,
   },
   uploadHint: {
     marginTop: 4,
+    fontFamily: FontFamily.regular,
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
   },
   uploadCount: {
     marginTop: 10,
+    fontFamily: FontFamily.semiBold,
     fontSize: 12,
-    fontWeight: '700',
     color: Colors.primary,
   },
   fileList: {
@@ -501,20 +693,20 @@ const styles = StyleSheet.create({
     gap: 8,
     maxWidth: '100%',
     backgroundColor: Colors.primary,
-    borderRadius: 20,
+    borderRadius: Radii.pill,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   fileChipText: {
     flexShrink: 1,
+    fontFamily: FontFamily.medium,
     fontSize: 12,
-    fontWeight: '600',
     color: Colors.white,
     maxWidth: 220,
   },
   saveBtn: {
     backgroundColor: Colors.primary,
-    borderRadius: 14,
+    borderRadius: Radii.lg,
     paddingVertical: 16,
     alignItems: 'center',
   },
@@ -522,9 +714,9 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   saveBtnText: {
+    fontFamily: FontFamily.semiBold,
     color: Colors.white,
     fontSize: 16,
-    fontWeight: '700',
   },
 });
 

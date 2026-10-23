@@ -38,6 +38,13 @@ export const ACCOUNT_SERVICE_URL =
 export const ISSUE_SERVICE_URL =
   'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/issue-service/api';
 
+/**
+ * Notification service — ProjectShell-1 REACT_APP_NOTIFICATION_SERVICE_URL
+ * (UserNotifications / NotificationContext).
+ */
+export const NOTIFICATION_SERVICE_URL =
+  'https://projectshell-vm.northeurope.cloudapp.azure.com:8443/notification-service/api';
+
 /** System-default Members grid template (CRM /members filter). */
 export const MEMBERS_FILTER_TEMPLATE_ID = '69ec6b70ed31fde95f0d478e';
 

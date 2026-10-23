@@ -62,6 +62,8 @@ export const Colors = {
   white: '#FFFFFF',
   black: '#000000',
   transparent: 'transparent',
+  /** Destructive / error actions */
+  danger: '#C0392B',
 
   tabBar: '#FCFCFF',
   tabBarActive: '#6A5DC0',

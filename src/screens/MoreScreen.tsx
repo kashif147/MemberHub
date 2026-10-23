@@ -7,6 +7,8 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Users,
@@ -19,6 +21,8 @@ import {
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
 import { signOut } from '../services/auth.services';
+import { STACKS } from '../enums/ScreenEnums';
+import type { MoreStackParamList } from '../navigation/MoreStack';
 import type { AppDispatch, RootState } from '../store';
 
 type MenuItem = {
@@ -42,14 +46,18 @@ const MenuRow = ({
   label,
   Icon,
   last,
+  onPress,
 }: {
   label: string;
   Icon: MenuItem['Icon'];
   last?: boolean;
+  onPress?: () => void;
 }) => (
   <TouchableOpacity
     style={[styles.menuRow, last && styles.menuRowLast]}
-    activeOpacity={0.7}>
+    activeOpacity={0.7}
+    onPress={onPress}
+    disabled={!onPress}>
     <View style={styles.menuLeft}>
       <View style={styles.menuIconWrap}>
         <Icon size={18} color={Colors.primary} strokeWidth={2.1} />
@@ -61,6 +69,8 @@ const MenuRow = ({
 );
 
 const MoreScreen = () => {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<MoreStackParamList>>();
   const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
 
@@ -91,6 +101,12 @@ const MoreScreen = () => {
         onPress: () => dispatch(signOut()),
       },
     ]);
+  };
+
+  const onMenuPress = (key: string) => {
+    if (key === 'notifications') {
+      navigation.navigate(STACKS.NOTIFICATIONS);
+    }
   };
 
   return (
@@ -128,6 +144,11 @@ const MoreScreen = () => {
               label={item.label}
               Icon={item.Icon}
               last={index === MENU_ITEMS.length - 1}
+              onPress={
+                item.key === 'notifications'
+                  ? () => onMenuPress(item.key)
+                  : undefined
+              }
             />
           ))}
         </View>

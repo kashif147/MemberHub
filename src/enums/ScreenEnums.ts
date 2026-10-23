@@ -12,6 +12,8 @@ export const STACKS = {
   NEW_CASE: 'NewCase',
   CASE_DETAIL: 'CaseDetail',
   MORE: 'More',
+  MORE_MAIN: 'MoreMain',
+  NOTIFICATIONS: 'Notifications',
   SPLASH: 'Splash',
   LANDING: 'Landing',
 } as const;

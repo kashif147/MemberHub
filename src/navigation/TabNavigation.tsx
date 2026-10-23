@@ -12,7 +12,7 @@ import {
 import HomeStack from './HomeStack';
 import MembersStack from './MembersStack';
 import CasesStack from './CasesStack';
-import MoreScreen from '../screens/MoreScreen';
+import MoreStack from './MoreStack';
 import CreateSheet from '../components/CreateSheet';
 import { Colors, FontFamily, Radii } from '../theme';
 import { STACKS } from '../enums/ScreenEnums';
@@ -65,7 +65,25 @@ function CustomTabBar({ state, navigation }: any) {
             target: route.key,
             canPreventDefault: true,
           });
-          if (!isFocused && !event.defaultPrevented) {
+          if (event.defaultPrevented) return;
+
+          // Cases tab always opens the list (not New Case left on the stack).
+          if (cfg.name === STACKS.CASES) {
+            navigation.navigate(STACKS.CASES, {
+              screen: STACKS.CASES_LIST,
+            });
+            return;
+          }
+
+          // More tab returns to the menu (not Notifications left on the stack).
+          if (cfg.name === STACKS.MORE) {
+            navigation.navigate(STACKS.MORE, {
+              screen: STACKS.MORE_MAIN,
+            });
+            return;
+          }
+
+          if (!isFocused) {
             navigation.navigate(route.name);
           }
         }}
@@ -146,7 +164,7 @@ const TabNavigation = () => (
     <Tab.Screen name={STACKS.HOME} component={HomeStack} />
     <Tab.Screen name={STACKS.MEMBERS} component={MembersStack} />
     <Tab.Screen name={STACKS.CASES} component={CasesStack} />
-    <Tab.Screen name={STACKS.MORE} component={MoreScreen} />
+    <Tab.Screen name={STACKS.MORE} component={MoreStack} />
   </Tab.Navigator>
 );
 

@@ -200,13 +200,21 @@ export const createNewCase = async (
   if (!values.ownerUserId) {
     throw new Error('owner.userId is required');
   }
+  if (!values.dateReceived?.trim()) {
+    throw new Error('dateReceived is required');
+  }
+  if (!values.origin?.trim()) {
+    throw new Error('origin is required');
+  }
 
   const issueStatus =
-    values.issueStatus || (await loadActiveComplaintStatus()) || undefined;
+    values.issueStatus ||
+    (await loadActiveComplaintStatus()) ||
+    'ACTIVE';
 
   const payload = buildComplaintCreatePayload({
     ...values,
-    issueStatus: issueStatus || null,
+    issueStatus,
   });
 
   const res = await createIssueRequest(payload);

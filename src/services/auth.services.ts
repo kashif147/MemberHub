@@ -17,6 +17,11 @@ import {
   setRefreshToken,
 } from '../helpers/auth.helper';
 import {
+  forceLogoutOnExpiredSession,
+  isAccessTokenExpired,
+  isUnauthorizedStatus,
+} from '../helpers/sessionExpiry.helper';
+import {
   signInAzureCrmRequest,
   signInCredentialsRequest,
   validationRequest,
@@ -43,7 +48,15 @@ export const validation = () => async (dispatch: AppDispatch) => {
     const saved = await getSavedUser();
 
     if (!token) {
-      dispatch(setSignedIn(false));
+      if (saved) {
+        await clearAuthStorage();
+      }
+      dispatch(signOutAction());
+      return;
+    }
+
+    if (isAccessTokenExpired(token)) {
+      await forceLogoutOnExpiredSession('validation_jwt_expired');
       return;
     }
 
@@ -57,8 +70,22 @@ export const validation = () => async (dispatch: AppDispatch) => {
         dispatch(setSignedIn(true));
         return;
       }
-    } catch {
-      // offline / API not wired yet
+
+      // Expired / invalid session — do not keep the user "logged in" offline.
+      if (isUnauthorizedStatus(res?.status)) {
+        await forceLogoutOnExpiredSession(`validation_http_${res?.status}`);
+        return;
+      }
+    } catch (e: any) {
+      if (e?.isSessionExpired || e?.code === 'SESSION_EXPIRED') {
+        return;
+      }
+      // Token cleared by interceptor while this call was in flight.
+      const stillHasToken = await getBearerToken();
+      if (!stillHasToken) {
+        return;
+      }
+      // Network failure only — allow cached session below.
     }
 
     if (saved) {
@@ -77,7 +104,7 @@ export const validation = () => async (dispatch: AppDispatch) => {
       return;
     }
 
-    dispatch(setSignedIn(false));
+    await forceLogoutOnExpiredSession('validation_no_user');
   } finally {
     dispatch(setLoading(false));
   }

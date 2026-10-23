@@ -7,6 +7,7 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 import store from './src/store';
 import { LookupProvider } from './src/contexts/lookupContext';
+import { NotificationProvider } from './src/contexts/notificationContext';
 import { Colors, applyGlobalTypography } from './src/theme';
 
 /** Same publishable key as Portal_App App.js */
@@ -22,11 +23,13 @@ function App(): React.JSX.Element {
         <SafeAreaProvider style={{ flex: 1, backgroundColor: Colors.background }}>
           <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
             <LookupProvider>
-              <StatusBar
-                barStyle="dark-content"
-                backgroundColor={Colors.background}
-              />
-              <AppNavigator />
+              <NotificationProvider>
+                <StatusBar
+                  barStyle="dark-content"
+                  backgroundColor={Colors.background}
+                />
+                <AppNavigator />
+              </NotificationProvider>
             </LookupProvider>
           </StripeProvider>
         </SafeAreaProvider>
