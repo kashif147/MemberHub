@@ -40,6 +40,8 @@ const firstNonEmpty = (...candidates: any[]): string[] => {
 };
 
 export type MeWorkLocationRow = {
+  /** Lookup id from /me assignedLocations.workLocations — used by membership drives. */
+  id: string;
   name: string;
   branch: string;
   region: string;
@@ -86,7 +88,18 @@ const parentBranchesFromWorkLocations = (raw: any): string[] => {
   ];
 };
 
-/** Normalize assignedLocations.workLocations into name + branch + region rows. */
+const asLookupId = (item: any): string => {
+  if (item == null) return '';
+  if (typeof item === 'string' || typeof item === 'number') {
+    // Bare strings are display names in some fallbacks — not usable as lookup ids.
+    return '';
+  }
+  return String(
+    item.id || item._id || item.lookupId || item.LookupId || '',
+  ).trim();
+};
+
+/** Normalize assignedLocations.workLocations into id + name + branch + region rows. */
 export const mapMeWorkLocationRows = (raw: any): MeWorkLocationRow[] => {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
@@ -94,10 +107,12 @@ export const mapMeWorkLocationRows = (raw: any): MeWorkLocationRow[] => {
   raw.forEach((item: any) => {
     const name = asName(item);
     if (!name) return;
-    const key = name.toLowerCase();
+    const id = asLookupId(item);
+    const key = (id || name).toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
     rows.push({
+      id,
       name,
       branch: branchFromWorkLocationItem(item),
       region: regionFromWorkLocationItem(item),

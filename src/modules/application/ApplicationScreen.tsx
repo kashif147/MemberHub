@@ -34,6 +34,7 @@ import {
   extractApiError,
   extractApplicationId,
 } from '../../helpers/applicationPayload.helper';
+import { linkApplicationToDrive } from '../../services/membershipDrive.services';
 import {
   isRetiredAssociateCategory,
   isUndergraduateStudentCategory,
@@ -107,8 +108,9 @@ const ApplicationScreen = () => {
   const scrollRef = useRef<any>(null);
   const { refreshLookups, loading: lookupsLoading } = useLookup();
 
+  const driveId = route.params?.driveId as string | undefined;
   const driveName =
-    route.params?.driveName || 'Beaumont ED – Autumn drive';
+    route.params?.driveName || 'Membership drive';
 
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(initialFormData);
@@ -122,6 +124,7 @@ const ApplicationScreen = () => {
   const [hasSubscription, setHasSubscription] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [shouldShowModal, setShouldShowModal] = useState(false);
+  const [driveLinked, setDriveLinked] = useState(false);
 
   // Portal: show payment modal after subscription is saved
   useEffect(() => {
@@ -282,16 +285,35 @@ const ApplicationScreen = () => {
     setHasProfessional(false);
     setHasSubscription(false);
     setIsSubmitted(false);
+    setDriveLinked(false);
     setShowValidation(false);
     setCurrentStep(1);
     scrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const tagApplicationToDrive = async (appId: string) => {
+    if (!driveId || !appId || driveLinked) return;
+    try {
+      await linkApplicationToDrive(driveId, appId);
+      setDriveLinked(true);
+    } catch (e: any) {
+      // Application is saved; attribution failure should not block the wizard.
+      Alert.alert(
+        'Drive tagging',
+        e?.message ||
+          'Application saved, but it could not be tagged to this drive.',
+      );
+    }
   };
 
   const finishBulkRegister = (extraMessage?: string) => {
     setIsSubmitted(true);
     const name =
       `${formData.personalInfo.forename} ${formData.personalInfo.surname}`.trim();
-    const base = `${name || 'Application'} tagged to “${driveName}” and pending review.`;
+    const tagged = driveId
+      ? `tagged to “${driveName}”`
+      : 'saved';
+    const base = `${name || 'Application'} ${tagged} and pending review.`;
     Alert.alert('Application submitted', extraMessage ? `${base}\n\n${extraMessage}` : base, [
       {
         text: 'Register another',
@@ -343,7 +365,10 @@ const ApplicationScreen = () => {
       }
 
       const id = extractApplicationId(res) || applicationId;
-      if (id) setApplicationId(id);
+      if (id) {
+        setApplicationId(id);
+        await tagApplicationToDrive(id);
+      }
       advanceStep();
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Unable to save personal details');

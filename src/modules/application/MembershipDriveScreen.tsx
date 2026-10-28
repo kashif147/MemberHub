@@ -7,6 +7,8 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import {
   useFocusEffect,
@@ -14,76 +16,153 @@ import {
   useRoute,
   type RouteProp,
 } from '@react-navigation/native';
-import { useDispatch, useSelector } from 'react-redux';
-import { UserPlus, ChevronDown, Search } from 'lucide-react-native';
+import { useSelector } from 'react-redux';
+import { UserPlus, ChevronDown, Search, Plus } from 'lucide-react-native';
 import { Header } from '../../components/Header';
 import { Colors } from '../../theme/colors';
 import { STACKS } from '../../enums/ScreenEnums';
-import { refreshMeProfile } from '../../services/auth.services';
-import type { AppDispatch, RootState } from '../../store';
+import {
+  displayRegistrationName,
+  formatDriveStatusLabel,
+  formatSignupTime,
+  isLinkedToday,
+} from '../../helpers/membershipDrive.helper';
+import {
+  ensureDriveAcceptingRegistrations,
+  fetchDriveRegistrations,
+  fetchMyMembershipDrives,
+  type DriveRegistration,
+  type MembershipDriveRecord,
+} from '../../services/membershipDrive.services';
+import type { RootState } from '../../store';
 import type { HomeStackParamList } from '../../navigation/HomeStack';
 
-const SIGNUPS_TODAY = [
-  { id: '1', name: 'Laura Hegarty', type: 'New', time: '16:40' },
-  { id: '2', name: 'Mark Dunne', type: 'Rejoin', time: '15:05' },
-  { id: '3', name: 'Chloe Byrne', type: 'New', time: '11:20' },
-];
-
 /**
- * Membership drive hub — Figma layout.
- * Drive picker lists work locations from /me assignedLocations.
+ * Membership drive hub — list / select officer drives from profile-service,
+ * show stats + today's sign-ups, open application tagged to the drive.
  */
 const MembershipDriveScreen = () => {
   const navigation = useNavigation<any>();
   const route =
     useRoute<RouteProp<HomeStackParamList, typeof STACKS.MEMBERSHIP_DRIVE>>();
-  const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
-  const [drive, setDrive] = useState('');
+
+  const [drives, setDrives] = useState<MembershipDriveRecord[]>([]);
+  const [selectedId, setSelectedId] = useState('');
   const [driveOpen, setDriveOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [signups, setSignups] = useState<DriveRegistration[]>([]);
+  const [signupsLoading, setSignupsLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
 
-  const locations = useMemo(
-    () => user?.workLocations || [],
-    [user?.workLocations],
+  const selectedDrive = useMemo(
+    () => drives.find(d => d._id === selectedId) || null,
+    [drives, selectedId],
   );
 
-  const ensureLocations = useCallback(async () => {
-    if (user?.workLocations?.length) return;
-    setLoadingLocations(true);
+  const stats = selectedDrive?.stats;
+
+  const loadDrives = useCallback(async (opts?: { soft?: boolean }) => {
+    if (!opts?.soft) setLoading(true);
     try {
-      await dispatch(refreshMeProfile());
+      const { drives: rows } = await fetchMyMembershipDrives({
+        includeStats: true,
+        limit: 50,
+      });
+      setDrives(rows);
+
+      const preferred =
+        route.params?.driveId ||
+        (route.params?.driveName
+          ? rows.find(d => d.name === route.params?.driveName)?._id
+          : undefined);
+
+      setSelectedId(prev => {
+        if (preferred && rows.some(d => d._id === preferred)) return preferred;
+        if (prev && rows.some(d => d._id === prev)) return prev;
+        const active = rows.find(d => d.status === 'IN_PROGRESS');
+        return active?._id || rows[0]?._id || '';
+      });
+    } catch (e: any) {
+      Alert.alert(
+        'Membership drives',
+        e?.message || 'Could not load your membership drives.',
+      );
+      setDrives([]);
+      setSelectedId('');
     } finally {
-      setLoadingLocations(false);
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [dispatch, user?.workLocations?.length]);
+  }, [route.params?.driveId, route.params?.driveName]);
+
+  const loadSignups = useCallback(async (driveId: string) => {
+    if (!driveId) {
+      setSignups([]);
+      return;
+    }
+    setSignupsLoading(true);
+    try {
+      const rows = await fetchDriveRegistrations(driveId, 30);
+      setSignups(rows.filter(r => isLinkedToday(r.linkedAt)));
+    } catch {
+      setSignups([]);
+    } finally {
+      setSignupsLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      ensureLocations();
-    }, [ensureLocations]),
+      loadDrives();
+    }, [loadDrives]),
   );
 
   useEffect(() => {
-    if (!locations.length) {
-      setDrive('');
-      return;
-    }
-    const preferred = route.params?.driveName;
-    if (preferred && locations.includes(preferred)) {
-      setDrive(preferred);
-      return;
-    }
-    setDrive(prev => (prev && locations.includes(prev) ? prev : locations[0]));
-  }, [locations, route.params?.driveName]);
+    if (selectedId) loadSignups(selectedId);
+    else setSignups([]);
+  }, [selectedId, loadSignups]);
 
-  const openApplication = () => {
-    if (!drive) return;
-    navigation.navigate(STACKS.APPLICATION_FORM, { driveName: drive });
+  const filteredSignups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return signups;
+    return signups.filter(row => {
+      const name = displayRegistrationName(row).toLowerCase();
+      return name.includes(q);
+    });
+  }, [signups, search]);
+
+  const openCreateDrive = () => {
+    navigation.navigate(STACKS.CREATE_DRIVE);
+  };
+
+  const openApplication = async () => {
+    if (!selectedDrive) return;
+    setStarting(true);
+    try {
+      const drive = await ensureDriveAcceptingRegistrations(selectedDrive);
+      if (drive.status !== selectedDrive.status) {
+        setDrives(prev =>
+          prev.map(d => (d._id === drive._id ? { ...d, ...drive } : d)),
+        );
+      }
+      navigation.navigate(STACKS.APPLICATION_FORM, {
+        driveId: drive._id,
+        driveName: drive.name,
+      });
+    } catch (e: any) {
+      Alert.alert(
+        'Membership drive',
+        e?.message || 'This drive cannot take new applications.',
+      );
+    } finally {
+      setStarting(false);
+    }
   };
 
   return (
@@ -99,78 +178,114 @@ const MembershipDriveScreen = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>
-          Drive · every application is tagged with it
-        </Text>
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadDrives({ soft: true });
+            }}
+            tintColor={Colors.primary}
+          />
+        }>
+        <View style={styles.hintRow}>
+          <Text style={styles.hint}>
+            Drive · every application is tagged with it
+          </Text>
+          <TouchableOpacity
+            onPress={openCreateDrive}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}>
+            <Text style={styles.newDriveLink}>New drive</Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={styles.driveSelect}
           activeOpacity={0.8}
-          disabled={!locations.length}
+          disabled={!drives.length || loading}
           onPress={() => {
-            if (locations.length) setDriveOpen(v => !v);
+            if (drives.length) setDriveOpen(v => !v);
           }}>
-          <Text
-            style={[
-              styles.driveSelectText,
-              !drive && styles.driveSelectPlaceholder,
-            ]}
-            numberOfLines={1}>
-            {drive ||
-              (loadingLocations
-                ? 'Loading locations…'
-                : 'Select a work location')}
-          </Text>
-          {loadingLocations ? (
+          <View style={styles.driveSelectMain}>
+            <Text
+              style={[
+                styles.driveSelectText,
+                !selectedDrive && styles.driveSelectPlaceholder,
+              ]}
+              numberOfLines={1}>
+              {loading
+                ? 'Loading drives…'
+                : selectedDrive?.name || 'Select a membership drive'}
+            </Text>
+            {selectedDrive ? (
+              <Text style={styles.driveStatus}>
+                {formatDriveStatusLabel(selectedDrive.status)}
+              </Text>
+            ) : null}
+          </View>
+          {loading ? (
             <ActivityIndicator size="small" color={Colors.primary} />
           ) : (
             <ChevronDown size={18} color={Colors.textMuted} strokeWidth={2} />
           )}
         </TouchableOpacity>
 
-        {driveOpen && locations.length > 0 ? (
+        {driveOpen && drives.length > 0 ? (
           <View style={styles.driveMenu}>
-            {locations.map(loc => (
+            {drives.map(drive => (
               <TouchableOpacity
-                key={loc}
+                key={drive._id}
                 style={styles.driveOption}
                 onPress={() => {
-                  setDrive(loc);
+                  setSelectedId(drive._id);
                   setDriveOpen(false);
                 }}
                 activeOpacity={0.7}>
                 <Text
                   style={[
                     styles.driveOptionText,
-                    loc === drive && styles.driveOptionActive,
+                    drive._id === selectedId && styles.driveOptionActive,
                   ]}>
-                  {loc}
+                  {drive.name}
+                </Text>
+                <Text style={styles.driveOptionMeta}>
+                  {formatDriveStatusLabel(drive.status)}
+                  {drive.stats != null ? ` · ${drive.stats.total} signed` : ''}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         ) : null}
 
-        {!loadingLocations && locations.length === 0 ? (
-          <Text style={styles.emptyLocations}>
-            No work locations on your profile. Locations come from /me
-            assignedLocations.
-          </Text>
+        {!loading && drives.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyLocations}>
+              You have no membership drives yet. Create one to tag applications
+              and track sign-ups.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyCreateBtn}
+              onPress={openCreateDrive}
+              activeOpacity={0.85}>
+              <Plus size={16} color={Colors.primary} strokeWidth={2.4} />
+              <Text style={styles.emptyCreateText}>Create membership drive</Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
 
-        {/* Stats — Figma */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>3</Text>
+            <Text style={styles.statValue}>{stats?.today ?? '—'}</Text>
             <Text style={styles.statLabel}>Today</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>17</Text>
+            <Text style={styles.statValue}>{stats?.total ?? '—'}</Text>
             <Text style={styles.statLabel}>This drive</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>4</Text>
+            <Text style={styles.statValue}>{stats?.rejoins ?? '—'}</Text>
             <Text style={styles.statLabel}>Rejoins</Text>
           </View>
         </View>
@@ -191,11 +306,18 @@ const MembershipDriveScreen = () => {
         </View>
 
         <TouchableOpacity
-          style={[styles.primaryBtn, !drive && styles.primaryBtnDisabled]}
+          style={[
+            styles.primaryBtn,
+            (!selectedDrive || starting) && styles.primaryBtnDisabled,
+          ]}
           activeOpacity={0.85}
           onPress={openApplication}
-          disabled={!drive}>
-          <UserPlus size={18} color={Colors.primary} strokeWidth={2.2} />
+          disabled={!selectedDrive || starting}>
+          {starting ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <UserPlus size={18} color={Colors.primary} strokeWidth={2.2} />
+          )}
           <Text style={styles.primaryBtnText}>New member application</Text>
         </TouchableOpacity>
 
@@ -203,19 +325,38 @@ const MembershipDriveScreen = () => {
           SIGNED UP TODAY
         </Text>
         <View style={styles.listCard}>
-          {SIGNUPS_TODAY.map((item, index) => (
-            <View
-              key={item.id}
-              style={[
-                styles.signupRow,
-                index === SIGNUPS_TODAY.length - 1 && styles.signupRowLast,
-              ]}>
-              <Text style={styles.signupName}>{item.name}</Text>
-              <Text style={styles.signupMeta}>
-                {item.type} · {item.time}
+          {signupsLoading ? (
+            <View style={styles.signupEmpty}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+            </View>
+          ) : filteredSignups.length === 0 ? (
+            <View style={styles.signupEmpty}>
+              <Text style={styles.signupEmptyText}>
+                {selectedDrive
+                  ? 'No sign-ups linked to this drive today.'
+                  : "Select a drive to see today's sign-ups."}
               </Text>
             </View>
-          ))}
+          ) : (
+            filteredSignups.map((item, index) => (
+              <View
+                key={item.applicationId}
+                style={[
+                  styles.signupRow,
+                  index === filteredSignups.length - 1 && styles.signupRowLast,
+                ]}>
+                <Text style={styles.signupName}>
+                  {displayRegistrationName(item)}
+                </Text>
+                <Text style={styles.signupMeta}>
+                  {item.isRejoin ? 'Rejoin' : 'New'}
+                  {formatSignupTime(item.linkedAt)
+                    ? ` · ${formatSignupTime(item.linkedAt)}`
+                    : ''}
+                </Text>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -229,10 +370,22 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingTop: 4,
   },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 12,
+  },
   hint: {
+    flex: 1,
     fontSize: 13,
     color: Colors.textSecondary,
-    marginBottom: 10,
+  },
+  newDriveLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   driveSelect: {
     flexDirection: 'row',
@@ -246,16 +399,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginBottom: 10,
   },
-  driveSelectText: {
+  driveSelectMain: {
     flex: 1,
+    marginRight: 8,
+  },
+  driveSelectText: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.textPrimary,
-    marginRight: 8,
   },
   driveSelectPlaceholder: {
     fontWeight: '500',
     color: Colors.textMuted,
+  },
+  driveStatus: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
   },
   driveMenu: {
     backgroundColor: Colors.surface,
@@ -267,7 +428,9 @@ const styles = StyleSheet.create({
   },
   driveOption: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
   },
   driveOptionText: {
     fontSize: 15,
@@ -278,11 +441,35 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
   },
+  driveOptionMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  emptyBox: {
+    marginBottom: 14,
+  },
   emptyLocations: {
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 18,
-    marginBottom: 14,
+    marginBottom: 12,
+  },
+  emptyCreateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  emptyCreateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.primary,
   },
   statsRow: {
     flexDirection: 'row',
@@ -364,6 +551,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderLight,
     overflow: 'hidden',
   },
+  signupEmpty: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  signupEmptyText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   signupRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -380,6 +578,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: Colors.textPrimary,
+    flex: 1,
+    marginRight: 12,
   },
   signupMeta: {
     fontSize: 13,

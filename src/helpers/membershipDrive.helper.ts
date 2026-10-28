@@ -1,18 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const STORAGE_KEY = '@memberhub/membership_drives';
-
-export type MembershipDrive = {
-  id: string;
-  name: string;
-  driveType: string;
-  workLocations: string[];
-  startDate: string;
-  endDate: string;
-  signUpTarget?: string;
-  notes?: string;
-  createdAt: string;
-};
+/** Shared membership-drive form helpers (API lives in services/membershipDrive.services). */
 
 export const DRIVE_TYPE_OPTIONS = [
   'Workplace walkabout',
@@ -22,43 +8,12 @@ export const DRIVE_TYPE_OPTIONS = [
   'Online / remote',
 ] as const;
 
-export const loadMembershipDrives = async (): Promise<MembershipDrive[]> => {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-export const saveMembershipDrive = async (
-  drive: Omit<MembershipDrive, 'id' | 'createdAt'> & {
-    id?: string;
-    createdAt?: string;
-  },
-): Promise<MembershipDrive> => {
-  const next: MembershipDrive = {
-    id: drive.id || `drive_${Date.now()}`,
-    name: drive.name.trim(),
-    driveType: drive.driveType,
-    workLocations: drive.workLocations || [],
-    startDate: drive.startDate,
-    endDate: drive.endDate,
-    signUpTarget: drive.signUpTarget,
-    notes: drive.notes,
-    createdAt: drive.createdAt || new Date().toISOString(),
-  };
-  const existing = await loadMembershipDrives();
-  const updated = [next, ...existing.filter(d => d.id !== next.id)];
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  return next;
-};
-
+/** Calendar date YYYY-MM-DD for Joi `date().iso()` / drive window. */
 export const toIsoStartOfDay = (date = new Date()) => {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  return d.toISOString();
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 export const toIsoDaysFromNow = (days: number) => {
@@ -66,3 +21,56 @@ export const toIsoDaysFromNow = (days: number) => {
   d.setDate(d.getDate() + days);
   return toIsoStartOfDay(d);
 };
+
+export const formatDriveStatusLabel = (status?: string) => {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return 'In progress';
+    case 'DRAFT':
+      return 'Draft';
+    case 'COMPLETED':
+      return 'Completed';
+    case 'INACTIVE':
+      return 'Inactive';
+    default:
+      return status || '';
+  }
+};
+
+export const formatSignupTime = (iso?: string | null) => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+};
+
+export const isLinkedToday = (iso?: string | null) => {
+  if (!iso) return false;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return false;
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const displayRegistrationName = (row: {
+  fullName?: string | null;
+  forename?: string | null;
+  surname?: string | null;
+}) =>
+  String(
+    row.fullName ||
+      [row.forename, row.surname].filter(Boolean).join(' ') ||
+      'Member',
+  ).trim();

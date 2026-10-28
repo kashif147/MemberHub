@@ -8,9 +8,11 @@ import { STACKS } from '../enums/ScreenEnums';
 
 export type HomeStackParamList = {
   [STACKS.HOME_MAIN]: undefined;
-  [STACKS.MEMBERSHIP_DRIVE]: { driveName?: string } | undefined;
+  [STACKS.MEMBERSHIP_DRIVE]:
+    | { driveId?: string; driveName?: string }
+    | undefined;
   [STACKS.CREATE_DRIVE]: undefined;
-  [STACKS.APPLICATION_FORM]: { driveName?: string };
+  [STACKS.APPLICATION_FORM]: { driveId?: string; driveName?: string };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();

@@ -71,6 +71,7 @@ const ProfessionalDetails = ({
       return meUser.workLocationRows;
     }
     return (meUser?.workLocations || []).map(name => ({
+      id: '',
       name,
       branch: '',
       region: '',

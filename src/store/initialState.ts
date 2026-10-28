@@ -9,8 +9,9 @@ export type AuthUser = {
   initials?: string;
   /** From /me — used to filter subscription members */
   workLocations?: string[];
-  /** From /me assignedLocations — name + branch/region per site */
+  /** From /me assignedLocations — lookup id + name + branch/region per site */
   workLocationRows?: {
+    id: string;
     name: string;
     branch: string;
     region: string;

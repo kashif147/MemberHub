@@ -21,10 +21,10 @@ import { Colors } from '../../theme/colors';
 import { refreshMeProfile } from '../../services/auth.services';
 import {
   DRIVE_TYPE_OPTIONS,
-  saveMembershipDrive,
   toIsoDaysFromNow,
   toIsoStartOfDay,
 } from '../../helpers/membershipDrive.helper';
+import { createAndStartMembershipDrive } from '../../services/membershipDrive.services';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { RootState, AppDispatch } from '../../store';
 
@@ -35,7 +35,8 @@ const CreateDriveScreen = () => {
 
   const [name, setName] = useState('');
   const [driveType, setDriveType] = useState<string>(DRIVE_TYPE_OPTIONS[0]);
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  /** Selected work-location lookup ids (not display names). */
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(toIsoStartOfDay());
   const [endDate, setEndDate] = useState(toIsoDaysFromNow(18));
   const [signUpTarget, setSignUpTarget] = useState('25');
@@ -47,20 +48,23 @@ const CreateDriveScreen = () => {
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
 
-  const workLocations = useMemo(
-    () => user?.workLocations || [],
-    [user?.workLocations],
+  const workLocationOptions = useMemo(
+    () =>
+      (user?.workLocationRows || []).filter(
+        row => row.id && row.name,
+      ),
+    [user?.workLocationRows],
   );
 
   const ensureLocations = useCallback(async () => {
-    if (user?.workLocations?.length) return;
+    if (user?.workLocationRows?.some(r => r.id)) return;
     setLoadingLocations(true);
     try {
       await dispatch(refreshMeProfile());
     } finally {
       setLoadingLocations(false);
     }
-  }, [dispatch, user?.workLocations?.length]);
+  }, [dispatch, user?.workLocationRows]);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,20 +74,21 @@ const CreateDriveScreen = () => {
 
   useEffect(() => {
     // Drop selections that are no longer in scope after /me refresh
-    setSelectedLocations(prev =>
-      prev.filter(loc => workLocations.includes(loc)),
-    );
-  }, [workLocations]);
+    const allowed = new Set(workLocationOptions.map(r => r.id));
+    setSelectedLocationIds(prev => prev.filter(id => allowed.has(id)));
+  }, [workLocationOptions]);
 
   const errName = showValidation && !name.trim();
   const errType = showValidation && !driveType;
-  const errLocations = showValidation && selectedLocations.length === 0;
+  const errLocations = showValidation && selectedLocationIds.length === 0;
   const errStart = showValidation && !startDate;
   const errEnd = showValidation && !endDate;
 
-  const toggleLocation = (loc: string) => {
-    setSelectedLocations(prev =>
-      prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc],
+  const toggleLocation = (lookupId: string) => {
+    setSelectedLocationIds(prev =>
+      prev.includes(lookupId)
+        ? prev.filter(id => id !== lookupId)
+        : [...prev, lookupId],
     );
   };
 
@@ -94,24 +99,31 @@ const CreateDriveScreen = () => {
     if (
       !name.trim() ||
       !driveType ||
-      selectedLocations.length === 0 ||
+      selectedLocationIds.length === 0 ||
       !startDate ||
       !endDate
     ) {
       return;
     }
+    if (new Date(endDate) < new Date(startDate)) {
+      Alert.alert('Create drive', 'End date must be on or after the start date.');
+      return;
+    }
     setSaving(true);
     try {
-      const drive = await saveMembershipDrive({
+      const target = Number.parseInt(signUpTarget.trim(), 10);
+      const drive = await createAndStartMembershipDrive({
         name: name.trim(),
         driveType,
-        workLocations: selectedLocations,
+        // API expects work-location lookup ids, not display names.
+        workLocations: selectedLocationIds,
         startDate,
         endDate,
-        signUpTarget: signUpTarget.trim(),
-        notes: notes.trim(),
+        signUpTarget: Number.isFinite(target) && target >= 0 ? target : 0,
+        notes: notes.trim() || null,
       });
       navigation.replace(STACKS.MEMBERSHIP_DRIVE, {
+        driveId: drive._id,
         driveName: drive.name,
       });
     } catch (e: any) {
@@ -174,20 +186,20 @@ const CreateDriveScreen = () => {
               <ActivityIndicator color={Colors.primary} />
               <Text style={styles.helper}>Loading locations from your profile…</Text>
             </View>
-          ) : workLocations.length === 0 ? (
+          ) : workLocationOptions.length === 0 ? (
             <Text style={styles.emptyLocations}>
               No work locations on your profile. Locations come from /me
               assignedLocations.
             </Text>
           ) : (
             <View style={styles.chipWrap}>
-              {workLocations.map(loc => {
-                const selected = selectedLocations.includes(loc);
+              {workLocationOptions.map(loc => {
+                const selected = selectedLocationIds.includes(loc.id);
                 return (
                   <TouchableOpacity
-                    key={loc}
+                    key={loc.id}
                     style={[styles.chip, selected && styles.chipSelected]}
-                    onPress={() => toggleLocation(loc)}
+                    onPress={() => toggleLocation(loc.id)}
                     activeOpacity={0.75}>
                     {selected ? (
                       <Check
@@ -207,7 +219,7 @@ const CreateDriveScreen = () => {
                         styles.chipText,
                         selected && styles.chipTextSelected,
                       ]}>
-                      {loc}
+                      {loc.name}
                     </Text>
                   </TouchableOpacity>
                 );
