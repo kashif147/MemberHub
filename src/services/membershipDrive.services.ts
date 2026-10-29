@@ -1,6 +1,8 @@
 import {
   changeMembershipDriveStatusRequest,
   createMembershipDriveRequest,
+  getMembershipDriveRequest,
+  getMembershipDriveStatsRequest,
   linkDriveRegistrationRequest,
   listDriveRegistrationsRequest,
   listMembershipDrivesRequest,
@@ -10,6 +12,7 @@ import {
   type MembershipDriveRecord,
   type MembershipDriveStats,
 } from '../api/membershipDrive.api';
+import { isOpenDrive } from '../helpers/membershipDrive.helper';
 
 const apiError = (res: any, fallback: string) => {
   const msg =
@@ -71,19 +74,26 @@ export const fetchMyMembershipDrives = async (options?: {
   };
 };
 
-/** Create a drive, then start it so applications can be attributed. */
-export const createAndStartMembershipDrive = async (
+/** Create a drive as DRAFT (Scheduled in the app). */
+export const createMembershipDrive = async (
   payload: CreateMembershipDriveBody,
 ): Promise<MembershipDriveRecord> => {
   const createRes = await createMembershipDriveRequest(payload);
   if (!(createRes.status >= 200 && createRes.status < 300)) {
     throw apiError(createRes, 'Could not create this drive');
   }
-
   const created = normalizeDrive(createRes.data);
   if (!created) {
     throw new Error('Drive created but response was empty');
   }
+  return created;
+};
+
+/** Create a drive, then start it so applications can be attributed. */
+export const createAndStartMembershipDrive = async (
+  payload: CreateMembershipDriveBody,
+): Promise<MembershipDriveRecord> => {
+  const created = await createMembershipDrive(payload);
 
   // DRAFT cannot accept registrations — move to IN_PROGRESS for the hub flow.
   const startRes = await changeMembershipDriveStatusRequest(
@@ -96,6 +106,73 @@ export const createAndStartMembershipDrive = async (
 
   // Still return the draft if start failed (e.g. permissions); hub can retry.
   return created;
+};
+
+export const fetchMembershipDrive = async (
+  driveId: string,
+): Promise<MembershipDriveRecord> => {
+  const res = await getMembershipDriveRequest(driveId);
+  if (!(res.status >= 200 && res.status < 300)) {
+    throw apiError(res, 'Failed to load drive');
+  }
+  const drive = normalizeDrive(res.data);
+  if (!drive) throw new Error('Drive not found');
+  return drive;
+};
+
+export const fetchMembershipDriveStats = async (
+  driveId: string,
+): Promise<MembershipDriveStats> => {
+  const res = await getMembershipDriveStatsRequest(driveId);
+  if (!(res.status >= 200 && res.status < 300)) {
+    throw apiError(res, 'Failed to load drive stats');
+  }
+  const raw = res.data || {};
+  return {
+    today: Number(raw.today) || 0,
+    total: Number(raw.total) || 0,
+    rejoins: Number(raw.rejoins) || 0,
+    signUpTarget: Number(raw.signUpTarget) || 0,
+    remainingToTarget: Number(raw.remainingToTarget) || 0,
+    timeZone: raw.timeZone,
+  };
+};
+
+export const updateMembershipDriveStatus = async (
+  driveId: string,
+  status: DriveStatus,
+): Promise<MembershipDriveRecord> => {
+  const res = await changeMembershipDriveStatusRequest(driveId, status);
+  if (!(res.status >= 200 && res.status < 300)) {
+    throw apiError(res, 'Could not update drive status');
+  }
+  const drive = normalizeDrive(res.data);
+  if (!drive) throw new Error('Drive update returned empty');
+  return drive;
+};
+
+/** Open (Scheduled + Live) and previous (Completed + Cancelled) lists. */
+export const fetchMyDrivesGrouped = async (): Promise<{
+  open: MembershipDriveRecord[];
+  previous: MembershipDriveRecord[];
+  liveCount: number;
+}> => {
+  const [{ drives }, inactive] = await Promise.all([
+    fetchMyMembershipDrives({ includeStats: true, limit: 50 }),
+    fetchMyMembershipDrives({
+      includeStats: true,
+      status: 'INACTIVE',
+      limit: 50,
+    }).catch(() => ({ drives: [] as MembershipDriveRecord[], total: 0 })),
+  ]);
+
+  const open = drives.filter(d => isOpenDrive(d.status));
+  const previous = [
+    ...drives.filter(d => d.status === 'COMPLETED'),
+    ...inactive.drives,
+  ];
+  const liveCount = open.filter(d => d.status === 'IN_PROGRESS').length;
+  return { open, previous, liveCount };
 };
 
 export const ensureDriveAcceptingRegistrations = async (

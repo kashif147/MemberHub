@@ -24,7 +24,7 @@ import {
   toIsoDaysFromNow,
   toIsoStartOfDay,
 } from '../../helpers/membershipDrive.helper';
-import { createAndStartMembershipDrive } from '../../services/membershipDrive.services';
+import { createMembershipDrive } from '../../services/membershipDrive.services';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { RootState, AppDispatch } from '../../store';
 
@@ -112,7 +112,7 @@ const CreateDriveScreen = () => {
     setSaving(true);
     try {
       const target = Number.parseInt(signUpTarget.trim(), 10);
-      const drive = await createAndStartMembershipDrive({
+      const drive = await createMembershipDrive({
         name: name.trim(),
         driveType,
         // API expects work-location lookup ids, not display names.
@@ -122,10 +122,16 @@ const CreateDriveScreen = () => {
         signUpTarget: Number.isFinite(target) && target >= 0 ? target : 0,
         notes: notes.trim() || null,
       });
-      navigation.replace(STACKS.MEMBERSHIP_DRIVE, {
-        driveId: drive._id,
-        driveName: drive.name,
-      });
+      // Prefer Drive details when available (More stack); else hub / cross-tab.
+      const routeNames = navigation.getState()?.routeNames || [];
+      if (routeNames.includes(STACKS.DRIVE_DETAILS)) {
+        navigation.replace(STACKS.DRIVE_DETAILS, { driveId: drive._id });
+      } else {
+        navigation.navigate(STACKS.MORE, {
+          screen: STACKS.DRIVE_DETAILS,
+          params: { driveId: drive._id },
+        });
+      }
     } catch (e: any) {
       Alert.alert('Create drive', e?.message || 'Could not save this drive.');
     } finally {

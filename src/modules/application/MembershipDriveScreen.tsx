@@ -19,13 +19,15 @@ import {
 import { useSelector } from 'react-redux';
 import { UserPlus, ChevronDown, Search, Plus } from 'lucide-react-native';
 import { Header } from '../../components/Header';
-import { Colors } from '../../theme/colors';
+import { Colors, FontFamily, Radii } from '../../theme';
 import { STACKS } from '../../enums/ScreenEnums';
 import {
   displayRegistrationName,
-  formatDriveStatusLabel,
+  driveProgress,
+  formatDriveDateRange,
   formatSignupTime,
   isLinkedToday,
+  resolveWorkLocationLabels,
 } from '../../helpers/membershipDrive.helper';
 import {
   ensureDriveAcceptingRegistrations,
@@ -38,8 +40,8 @@ import type { RootState } from '../../store';
 import type { HomeStackParamList } from '../../navigation/HomeStack';
 
 /**
- * Membership drive hub — list / select officer drives from profile-service,
- * show stats + today's sign-ups, open application tagged to the drive.
+ * Membership drive hub — prototype layout with drive picker, progress,
+ * stats, search, and today’s sign-ups.
  */
 const MembershipDriveScreen = () => {
   const navigation = useNavigation<any>();
@@ -59,47 +61,72 @@ const MembershipDriveScreen = () => {
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
+  const locationRows = user?.workLocationRows || [];
 
   const selectedDrive = useMemo(
     () => drives.find(d => d._id === selectedId) || null,
     [drives, selectedId],
   );
 
-  const stats = selectedDrive?.stats;
+  const progress = useMemo(
+    () =>
+      selectedDrive
+        ? driveProgress(selectedDrive)
+        : { total: 0, target: 0, rejoins: 0, pct: 0 },
+    [selectedDrive],
+  );
 
-  const loadDrives = useCallback(async (opts?: { soft?: boolean }) => {
-    if (!opts?.soft) setLoading(true);
-    try {
-      const { drives: rows } = await fetchMyMembershipDrives({
-        includeStats: true,
-        limit: 50,
-      });
-      setDrives(rows);
+  const locationLabel = resolveWorkLocationLabels(
+    selectedDrive?.workLocations,
+    locationRows,
+  );
 
-      const preferred =
-        route.params?.driveId ||
-        (route.params?.driveName
-          ? rows.find(d => d.name === route.params?.driveName)?._id
-          : undefined);
+  const driveMetaLeft = selectedDrive
+    ? [selectedDrive.driveType, locationLabel !== '—' ? locationLabel : null]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
-      setSelectedId(prev => {
-        if (preferred && rows.some(d => d._id === preferred)) return preferred;
-        if (prev && rows.some(d => d._id === prev)) return prev;
-        const active = rows.find(d => d.status === 'IN_PROGRESS');
-        return active?._id || rows[0]?._id || '';
-      });
-    } catch (e: any) {
-      Alert.alert(
-        'Membership drives',
-        e?.message || 'Could not load your membership drives.',
-      );
-      setDrives([]);
-      setSelectedId('');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [route.params?.driveId, route.params?.driveName]);
+  const driveMetaRight = selectedDrive
+    ? formatDriveDateRange(selectedDrive.startDate, selectedDrive.endDate)
+    : '';
+
+  const loadDrives = useCallback(
+    async (opts?: { soft?: boolean }) => {
+      if (!opts?.soft) setLoading(true);
+      try {
+        const { drives: rows } = await fetchMyMembershipDrives({
+          includeStats: true,
+          limit: 50,
+        });
+        setDrives(rows);
+
+        const preferred =
+          route.params?.driveId ||
+          (route.params?.driveName
+            ? rows.find(d => d.name === route.params?.driveName)?._id
+            : undefined);
+
+        setSelectedId(prev => {
+          if (preferred && rows.some(d => d._id === preferred)) return preferred;
+          if (prev && rows.some(d => d._id === prev)) return prev;
+          const active = rows.find(d => d.status === 'IN_PROGRESS');
+          return active?._id || rows[0]?._id || '';
+        });
+      } catch (e: any) {
+        Alert.alert(
+          'Membership drives',
+          e?.message || 'Could not load your membership drives.',
+        );
+        setDrives([]);
+        setSelectedId('');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [route.params?.driveId, route.params?.driveName],
+  );
 
   const loadSignups = useCallback(async (driveId: string) => {
     if (!driveId) {
@@ -138,7 +165,9 @@ const MembershipDriveScreen = () => {
   }, [signups, search]);
 
   const openCreateDrive = () => {
-    navigation.navigate(STACKS.CREATE_DRIVE);
+    navigation.navigate(STACKS.MORE, {
+      screen: STACKS.CREATE_DRIVE,
+    });
   };
 
   const openApplication = async () => {
@@ -189,18 +218,22 @@ const MembershipDriveScreen = () => {
             tintColor={Colors.primary}
           />
         }>
+        {/* Hint + New drive */}
         <View style={styles.hintRow}>
           <Text style={styles.hint}>
             Drive · every application is tagged with it
           </Text>
           <TouchableOpacity
+            style={styles.newDriveBtn}
             onPress={openCreateDrive}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.7}>
+            <Plus size={14} color={Colors.primary} strokeWidth={2.6} />
             <Text style={styles.newDriveLink}>New drive</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Drive picker */}
         <TouchableOpacity
           style={styles.driveSelect}
           activeOpacity={0.8}
@@ -208,23 +241,16 @@ const MembershipDriveScreen = () => {
           onPress={() => {
             if (drives.length) setDriveOpen(v => !v);
           }}>
-          <View style={styles.driveSelectMain}>
-            <Text
-              style={[
-                styles.driveSelectText,
-                !selectedDrive && styles.driveSelectPlaceholder,
-              ]}
-              numberOfLines={1}>
-              {loading
-                ? 'Loading drives…'
-                : selectedDrive?.name || 'Select a membership drive'}
-            </Text>
-            {selectedDrive ? (
-              <Text style={styles.driveStatus}>
-                {formatDriveStatusLabel(selectedDrive.status)}
-              </Text>
-            ) : null}
-          </View>
+          <Text
+            style={[
+              styles.driveSelectText,
+              !selectedDrive && styles.driveSelectPlaceholder,
+            ]}
+            numberOfLines={1}>
+            {loading
+              ? 'Loading drives…'
+              : selectedDrive?.name || 'Select a membership drive'}
+          </Text>
           {loading ? (
             <ActivityIndicator size="small" color={Colors.primary} />
           ) : (
@@ -234,10 +260,13 @@ const MembershipDriveScreen = () => {
 
         {driveOpen && drives.length > 0 ? (
           <View style={styles.driveMenu}>
-            {drives.map(drive => (
+            {drives.map((drive, index) => (
               <TouchableOpacity
                 key={drive._id}
-                style={styles.driveOption}
+                style={[
+                  styles.driveOption,
+                  index === drives.length - 1 && styles.driveOptionLast,
+                ]}
                 onPress={() => {
                   setSelectedId(drive._id);
                   setDriveOpen(false);
@@ -250,12 +279,31 @@ const MembershipDriveScreen = () => {
                   ]}>
                   {drive.name}
                 </Text>
-                <Text style={styles.driveOptionMeta}>
-                  {formatDriveStatusLabel(drive.status)}
-                  {drive.stats != null ? ` · ${drive.stats.total} signed` : ''}
-                </Text>
               </TouchableOpacity>
             ))}
+          </View>
+        ) : null}
+
+        {/* Meta + progress — prototype under picker */}
+        {selectedDrive ? (
+          <View style={styles.driveMetaBlock}>
+            <View style={styles.driveMetaRow}>
+              <Text style={styles.driveMetaLeft} numberOfLines={2}>
+                {driveMetaLeft}
+              </Text>
+              <Text style={styles.driveMetaRight}>{driveMetaRight}</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${progress.pct}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressLabel}>
+              {progress.total} of {progress.target || 0} target
+            </Text>
           </View>
         ) : null}
 
@@ -275,17 +323,24 @@ const MembershipDriveScreen = () => {
           </View>
         ) : null}
 
+        {/* Stats */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats?.today ?? '—'}</Text>
+            <Text style={styles.statValue}>
+              {selectedDrive ? selectedDrive.stats?.today ?? 0 : '—'}
+            </Text>
             <Text style={styles.statLabel}>Today</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats?.total ?? '—'}</Text>
+            <Text style={styles.statValue}>
+              {selectedDrive ? progress.total : '—'}
+            </Text>
             <Text style={styles.statLabel}>This drive</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats?.rejoins ?? '—'}</Text>
+            <Text style={styles.statValue}>
+              {selectedDrive ? progress.rejoins : '—'}
+            </Text>
             <Text style={styles.statLabel}>Rejoins</Text>
           </View>
         </View>
@@ -324,21 +379,21 @@ const MembershipDriveScreen = () => {
         <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>
           SIGNED UP TODAY
         </Text>
-        <View style={styles.listCard}>
-          {signupsLoading ? (
-            <View style={styles.signupEmpty}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-            </View>
-          ) : filteredSignups.length === 0 ? (
-            <View style={styles.signupEmpty}>
-              <Text style={styles.signupEmptyText}>
-                {selectedDrive
-                  ? 'No sign-ups linked to this drive today.'
-                  : "Select a drive to see today's sign-ups."}
-              </Text>
-            </View>
-          ) : (
-            filteredSignups.map((item, index) => (
+        {signupsLoading ? (
+          <View style={styles.signupEmpty}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+          </View>
+        ) : filteredSignups.length === 0 ? (
+          <View style={styles.signupEmpty}>
+            <Text style={styles.signupEmptyText}>
+              {selectedDrive
+                ? 'No sign-ups linked to this drive today.'
+                : "Select a drive to see today's sign-ups."}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.listBlock}>
+            {filteredSignups.map((item, index) => (
               <View
                 key={item.applicationId}
                 style={[
@@ -355,9 +410,9 @@ const MembershipDriveScreen = () => {
                     : ''}
                 </Text>
               </View>
-            ))
-          )}
-        </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -374,17 +429,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
     gap: 12,
   },
   hint: {
     flex: 1,
-    fontSize: 13,
-    color: Colors.textSecondary,
+    fontFamily: FontFamily.medium,
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  newDriveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   newDriveLink: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontFamily: FontFamily.semiBold,
+    fontSize: 14,
     color: Colors.primary,
   },
   driveSelect: {
@@ -392,38 +453,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: Radii.md,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 14,
     marginBottom: 10,
   },
-  driveSelectMain: {
+  driveSelectText: {
     flex: 1,
+    fontFamily: FontFamily.medium,
+    fontSize: 15,
+    color: Colors.textPrimary,
     marginRight: 8,
   },
-  driveSelectText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
   driveSelectPlaceholder: {
-    fontWeight: '500',
+    fontFamily: FontFamily.regular,
     color: Colors.textMuted,
-  },
-  driveStatus: {
-    marginTop: 2,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '500',
   },
   driveMenu: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: Radii.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: 14,
+    marginBottom: 10,
     overflow: 'hidden',
   },
   driveOption: {
@@ -432,24 +485,63 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.borderLight,
   },
+  driveOptionLast: {
+    borderBottomWidth: 0,
+  },
   driveOptionText: {
+    fontFamily: FontFamily.medium,
     fontSize: 15,
     color: Colors.textSecondary,
-    fontWeight: '500',
   },
   driveOptionActive: {
+    fontFamily: FontFamily.semiBold,
     color: Colors.primary,
-    fontWeight: '700',
   },
-  driveOptionMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    color: Colors.textMuted,
+  driveMetaBlock: {
+    marginBottom: 18,
+  },
+  driveMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  driveMetaLeft: {
+    flex: 1,
+    fontFamily: FontFamily.regular,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  driveMetaRight: {
+    fontFamily: FontFamily.regular,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    flexShrink: 0,
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: Radii.pill,
+    backgroundColor: Colors.primaryLight,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: Radii.pill,
+    backgroundColor: Colors.primary,
+  },
+  progressLabel: {
+    fontFamily: FontFamily.regular,
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
   emptyBox: {
     marginBottom: 14,
   },
   emptyLocations: {
+    fontFamily: FontFamily.regular,
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 18,
@@ -463,12 +555,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.primary,
-    borderRadius: 14,
+    borderRadius: Radii.lg,
     paddingVertical: 12,
+    marginBottom: 8,
   },
   emptyCreateText: {
+    fontFamily: FontFamily.semiBold,
     fontSize: 14,
-    fontWeight: '600',
     color: Colors.primary,
   },
   statsRow: {
@@ -479,29 +572,30 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: Radii.md,
     paddingVertical: 16,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   statValue: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
+    fontSize: 26,
     color: Colors.textPrimary,
     letterSpacing: -0.5,
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '400',
+    fontFamily: FontFamily.regular,
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: FontFamily.medium,
+    fontSize: 10,
     color: Colors.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     marginBottom: 10,
   },
   sectionLabelSpaced: {
@@ -512,16 +606,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: Radii.md,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 14,
     height: 48,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontFamily: FontFamily.regular,
+    fontSize: 14,
     color: Colors.textPrimary,
     paddingVertical: 0,
   },
@@ -533,30 +628,26 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1.5,
     borderColor: Colors.primary,
-    borderRadius: 14,
+    borderRadius: Radii.lg,
     paddingVertical: 14,
   },
   primaryBtnDisabled: {
     opacity: 0.5,
   },
   primaryBtnText: {
+    fontFamily: FontFamily.medium,
     fontSize: 15,
-    fontWeight: '600',
     color: Colors.primary,
   },
-  listCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    overflow: 'hidden',
+  listBlock: {
+    marginTop: 0,
   },
   signupEmpty: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingVertical: 16,
     alignItems: 'center',
   },
   signupEmptyText: {
+    fontFamily: FontFamily.regular,
     fontSize: 13,
     color: Colors.textSecondary,
     textAlign: 'center',
@@ -566,24 +657,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     borderBottomColor: Colors.borderLight,
   },
   signupRowLast: {
     borderBottomWidth: 0,
   },
   signupName: {
+    fontFamily: FontFamily.medium,
     fontSize: 15,
-    fontWeight: '600',
     color: Colors.textPrimary,
     flex: 1,
     marginRight: 12,
   },
   signupMeta: {
+    fontFamily: FontFamily.regular,
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: Colors.textMuted,
   },
 });
 

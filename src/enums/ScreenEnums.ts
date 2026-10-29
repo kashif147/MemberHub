@@ -4,6 +4,8 @@ export const STACKS = {
   MEMBERSHIP_DRIVE: 'MembershipDrive',
   CREATE_DRIVE: 'CreateDrive',
   APPLICATION_FORM: 'ApplicationForm',
+  MY_DRIVES: 'MyDrives',
+  DRIVE_DETAILS: 'DriveDetails',
   MEMBERS: 'Members',
   MEMBERS_LIST: 'MembersList',
   MEMBER_DETAIL: 'MemberDetail',
@@ -14,6 +16,7 @@ export const STACKS = {
   MORE: 'More',
   MORE_MAIN: 'MoreMain',
   NOTIFICATIONS: 'Notifications',
+  SETTINGS: 'Settings',
   SPLASH: 'Splash',
   LANDING: 'Landing',
 } as const;

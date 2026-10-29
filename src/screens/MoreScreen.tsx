@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,11 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  Users,
+  Megaphone,
   Bell,
   ArrowLeftRight,
   Settings,
@@ -21,6 +21,7 @@ import {
 import { Colors } from '../theme/colors';
 import { Header } from '../components/Header';
 import { signOut } from '../services/auth.services';
+import { fetchMyDrivesGrouped } from '../services/membershipDrive.services';
 import { STACKS } from '../enums/ScreenEnums';
 import type { MoreStackParamList } from '../navigation/MoreStack';
 import type { AppDispatch, RootState } from '../store';
@@ -36,7 +37,7 @@ type MenuItem = {
 };
 
 const MENU_ITEMS: MenuItem[] = [
-  { key: 'drives', label: 'My drives', Icon: Users },
+  { key: 'drives', label: 'My drives', Icon: Megaphone },
   { key: 'notifications', label: 'Notifications', Icon: Bell },
   { key: 'memberApp', label: 'Open member app', Icon: ArrowLeftRight },
   { key: 'settings', label: 'Settings', Icon: Settings },
@@ -47,11 +48,13 @@ const MenuRow = ({
   Icon,
   last,
   onPress,
+  badge,
 }: {
   label: string;
   Icon: MenuItem['Icon'];
   last?: boolean;
   onPress?: () => void;
+  badge?: string | null;
 }) => (
   <TouchableOpacity
     style={[styles.menuRow, last && styles.menuRowLast]}
@@ -63,6 +66,11 @@ const MenuRow = ({
         <Icon size={18} color={Colors.primary} strokeWidth={2.1} />
       </View>
       <Text style={styles.menuLabel}>{label}</Text>
+      {badge ? (
+        <View style={styles.liveBadge}>
+          <Text style={styles.liveBadgeText}>{badge}</Text>
+        </View>
+      ) : null}
     </View>
     <ChevronRight size={18} color={Colors.textMuted} strokeWidth={2} />
   </TouchableOpacity>
@@ -73,6 +81,7 @@ const MoreScreen = () => {
     useNavigation<NativeStackNavigationProp<MoreStackParamList>>();
   const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
+  const [liveCount, setLiveCount] = useState(0);
 
   const name = user?.name || 'Kashif Rehman';
   const initials =
@@ -92,6 +101,22 @@ const MoreScreen = () => {
       ? workLocations.join(', ')
       : '8 members · set by your rep role in the CRM';
 
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchMyDrivesGrouped()
+        .then(result => {
+          if (!cancelled) setLiveCount(result.liveCount);
+        })
+        .catch(() => {
+          if (!cancelled) setLiveCount(0);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
   const onSignOut = () => {
     Alert.alert('Sign out', 'End your MemberHub session?', [
       { text: 'Cancel', style: 'cancel' },
@@ -106,6 +131,14 @@ const MoreScreen = () => {
   const onMenuPress = (key: string) => {
     if (key === 'notifications') {
       navigation.navigate(STACKS.NOTIFICATIONS);
+      return;
+    }
+    if (key === 'drives') {
+      navigation.navigate(STACKS.MY_DRIVES);
+      return;
+    }
+    if (key === 'settings') {
+      navigation.navigate(STACKS.SETTINGS);
     }
   };
 
@@ -116,7 +149,6 @@ const MoreScreen = () => {
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}>
-        {/* Profile — Figma */}
         <View style={styles.profileRow}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials}</Text>
@@ -129,14 +161,12 @@ const MoreScreen = () => {
           </View>
         </View>
 
-        {/* Your scope — Figma */}
         <View style={styles.scopeCard}>
           <Text style={styles.scopeLabel}>YOUR SCOPE</Text>
           <Text style={styles.scopeTitle}>{branches}</Text>
           <Text style={styles.scopeSubtitle}>{scopeSubtitle}</Text>
         </View>
 
-        {/* Menu list — Figma */}
         <View style={styles.menuCard}>
           {MENU_ITEMS.map((item, index) => (
             <MenuRow
@@ -144,8 +174,15 @@ const MoreScreen = () => {
               label={item.label}
               Icon={item.Icon}
               last={index === MENU_ITEMS.length - 1}
+              badge={
+                item.key === 'drives' && liveCount > 0
+                  ? `${liveCount} live`
+                  : null
+              }
               onPress={
-                item.key === 'notifications'
+                item.key === 'notifications' ||
+                item.key === 'drives' ||
+                item.key === 'settings'
                   ? () => onMenuPress(item.key)
                   : undefined
               }
@@ -153,7 +190,6 @@ const MoreScreen = () => {
           ))}
         </View>
 
-        {/* Sign out — Figma */}
         <TouchableOpacity
           style={styles.signOutBtn}
           activeOpacity={0.7}
@@ -263,6 +299,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textPrimary,
     fontWeight: '500',
+  },
+  liveBadge: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  liveBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   signOutBtn: {
     flexDirection: 'row',
