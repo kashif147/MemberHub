@@ -1,5 +1,8 @@
 export type CaseStatus = 'In progress' | 'Open' | 'Closed';
 
+/** How the signed-in officer relates to the case (GET /issues/mine). */
+export type CaseRelation = 'created' | 'assigned' | 'both';
+
 export type CaseItem = {
   id: string;
   category: string;
@@ -9,6 +12,8 @@ export type CaseItem = {
   memberId?: string;
   date: string;
   status: CaseStatus;
+  /** Present when mapped with the signed-in user id. */
+  relation?: CaseRelation;
 };
 
 export const CASES: CaseItem[] = [

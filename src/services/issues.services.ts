@@ -8,10 +8,19 @@ import {
   fetchIssueByIdRequest,
   fetchIssueDropdownLookupsRequest,
   fetchIssueHistoryRequest,
-  fetchIssuesRequest,
+  fetchMyIssuesRequest,
   fetchIssueStatusesRequest,
+  updateIssueRequest,
   uploadIssueAttachmentRequest,
+  type MyIssuesMeta,
+  type MyIssuesScope,
 } from '../api/issues.api';
+import {
+  COMPLAINT_TEAM_RESOURCE,
+  ISSUE_TYPE_TO_TEAM_RESOURCE,
+  fetchUsersByPermissionRequest,
+  type TeamUserOption,
+} from '../api/roleUsers.api';
 import {
   CASE_ATTACHMENT_TYPES_HINT,
   isAllowedCaseAttachment,
@@ -24,6 +33,7 @@ import {
 } from '../helpers/cases.helper';
 import {
   buildComplaintCreatePayload,
+  buildNoteActivityPayload,
   type NewCaseFormValues,
 } from '../helpers/issuePayload.helper';
 import type { CaseItem } from '../data/mockCases';
@@ -50,16 +60,126 @@ export const loadCaseLookups = async () => {
   return res.data;
 };
 
+export type { MyIssuesScope, MyIssuesMeta, TeamUserOption };
+
+export type MyCasesResult = {
+  cases: CaseItem[];
+  meta: MyIssuesMeta;
+};
+
 /**
- * Load all issues from CRM issue-service GET /issues
- * (same as ProjectShell-1 CasesSummary / IssuesManagementDashboard).
+ * GET /issues/mine — only issues created by or assigned to the signed-in officer.
  */
-export const loadCasesList = async (): Promise<CaseItem[]> => {
-  const res = await fetchIssuesRequest();
+export const loadMyCasesList = async (opts?: {
+  scope?: MyIssuesScope;
+  limit?: number;
+  currentUserId?: string | null;
+}): Promise<MyCasesResult> => {
+  const scope = opts?.scope || 'all';
+  const res = await fetchMyIssuesRequest({
+    scope,
+    limit: opts?.limit ?? 100,
+    page: 1,
+  });
   assertOk(res, 'Failed to load cases');
-  return (res.data || [])
-    .map(mapIssueToCaseItem)
+  const cases = (res.data || [])
+    .map((row: any) => mapIssueToCaseItem(row, opts?.currentUserId))
     .filter((c: CaseItem) => Boolean(c.id));
+  return { cases, meta: res.meta };
+};
+
+/** Home / recent — mine scope=all (created + assigned only). */
+export const loadCasesList = async (
+  currentUserId?: string | null,
+): Promise<CaseItem[]> => {
+  const { cases } = await loadMyCasesList({
+    scope: 'all',
+    limit: 50,
+    currentUserId,
+  });
+  return cases;
+};
+
+const ensureSelfInOwnerOptions = (
+  options: TeamUserOption[],
+  currentUserId?: string | null,
+  currentUserLabel?: string | null,
+): TeamUserOption[] => {
+  const selfId = String(currentUserId || '').trim();
+  if (!selfId) return options;
+  const next = [...options];
+  const idx = next.findIndex(o => o.value === selfId);
+  const labelBase = currentUserLabel?.trim() || 'Myself';
+  if (idx === -1) {
+    next.unshift({ value: selfId, label: `${labelBase} (you)` });
+  } else {
+    const [self] = next.splice(idx, 1);
+    next.unshift({
+      ...self,
+      label: self.label.includes('(you)')
+        ? self.label
+        : `${self.label} (you)`,
+    });
+  }
+  return next;
+};
+
+/**
+ * Owner picker options — users with write on the issue-type team resource
+ * (CRM CreateCasesDrawer / CasesDetails useTeamUserOptions).
+ */
+export const loadOwnerOptions = async (opts?: {
+  issueType?: string | null;
+  currentUserId?: string | null;
+  currentUserLabel?: string | null;
+}): Promise<TeamUserOption[]> => {
+  const resource =
+    ISSUE_TYPE_TO_TEAM_RESOURCE[String(opts?.issueType || 'COMPLAINT')] ||
+    COMPLAINT_TEAM_RESOURCE;
+  const res = await fetchUsersByPermissionRequest(resource, 'write', {
+    limit: 40,
+  });
+  if (!(res.status >= 200 && res.status < 300)) {
+    return ensureSelfInOwnerOptions(
+      [],
+      opts?.currentUserId,
+      opts?.currentUserLabel,
+    );
+  }
+  return ensureSelfInOwnerOptions(
+    res.data || [],
+    opts?.currentUserId,
+    opts?.currentUserLabel,
+  );
+};
+
+/** COMPLAINT create — shorthand for loadOwnerOptions({ issueType: 'COMPLAINT' }). */
+export const loadComplaintOwnerOptions = (opts?: {
+  currentUserId?: string | null;
+  currentUserLabel?: string | null;
+}) =>
+  loadOwnerOptions({
+    issueType: 'COMPLAINT',
+    currentUserId: opts?.currentUserId,
+    currentUserLabel: opts?.currentUserLabel,
+  });
+
+/**
+ * Reassign owner — PUT /issues/:id { owner: { userId } }
+ * (CRM CasesDetails handleSaveGeneral / buildIssueUpdatePayload).
+ */
+export const updateCaseOwner = async (
+  issueId: string,
+  ownerUserId: string,
+) => {
+  if (!issueId) throw new Error('Missing case id');
+  const userId = String(ownerUserId || '').trim();
+  if (!userId) throw new Error('owner.userId is required');
+  const res = await updateIssueRequest(issueId, {
+    owner: { userId },
+  });
+  assertOk(res, 'Failed to update case owner');
+  return res.data;
 };
 
 export type CaseActivityAttachment = {
@@ -343,15 +463,10 @@ export const addCaseNote = async (
 
   let created: any = null;
   if (body) {
-    const res = await createIssueActivityRequest(issueId, {
-      activityType: 'NOTE',
-      subject: null,
-      body,
-      interactionDate: new Date().toISOString(),
-      pertinentToFileReview: false,
-      sendNotification: true,
-      visibleToMember: false,
-    });
+    const res = await createIssueActivityRequest(
+      issueId,
+      buildNoteActivityPayload(body),
+    );
     assertOk(res, extractUploadErrorMessage(res, 'Failed to add comment'));
     created = res.data;
   }

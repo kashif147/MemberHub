@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors } from '../theme/colors';
-import type { CaseItem, CaseStatus } from '../data/mockCases';
+import type { CaseItem, CaseRelation, CaseStatus } from '../data/mockCases';
 
 const badgeStyle = (status: CaseStatus) => {
   switch (status) {
@@ -26,6 +26,13 @@ const badgeStyle = (status: CaseStatus) => {
   }
 };
 
+const relationLabel = (relation?: CaseRelation) => {
+  if (relation === 'created') return 'Created by you';
+  if (relation === 'assigned') return 'Assigned to you';
+  if (relation === 'both') return 'Created · Assigned';
+  return null;
+};
+
 type Props = {
   item: CaseItem;
   onPress?: () => void;
@@ -34,7 +41,8 @@ type Props = {
 /** Figma Cases tab card — category, status, title, CS · member · date. */
 export const CaseCard = ({ item, onPress }: Props) => {
   const badge = badgeStyle(item.status);
-  const meta = [item.caseNo, item.member, item.date]
+  const relation = relationLabel(item.relation);
+  const meta = [item.caseNo, item.member, item.date, relation]
     .map(v => String(v || '').trim())
     .filter(Boolean)
     .join(' · ');

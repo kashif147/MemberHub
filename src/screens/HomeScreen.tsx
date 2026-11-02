@@ -57,21 +57,26 @@ const HomeScreen = () => {
   const branch = user?.branches || 'Beaumont & Mater branches';
   const memberCount = useMemo(() => MEMBER_COUNT, []);
 
-  const loadRecentCases = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setCasesLoading(true);
-    setCasesError(null);
-    try {
-      const rows = await loadCasesList();
-      setRecentCases(rows.slice(0, RECENT_CASES_LIMIT));
-    } catch (e: any) {
-      setCasesError(e?.message || 'Failed to load cases');
-      setRecentCases([]);
-    } finally {
-      setCasesLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const userId = user?.id && user.id !== 'bo-demo' ? user.id : null;
+
+  const loadRecentCases = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setCasesLoading(true);
+      setCasesError(null);
+      try {
+        const rows = await loadCasesList(userId);
+        setRecentCases(rows.slice(0, RECENT_CASES_LIMIT));
+      } catch (e: any) {
+        setCasesError(e?.message || 'Failed to load cases');
+        setRecentCases([]);
+      } finally {
+        setCasesLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [userId],
+  );
 
   useFocusEffect(
     useCallback(() => {

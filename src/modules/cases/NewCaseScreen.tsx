@@ -26,7 +26,9 @@ import MemberPickerField from './MemberPickerField';
 import {
   createNewCase,
   loadCaseLookups,
+  loadComplaintOwnerOptions,
   type PendingAttachment,
+  type TeamUserOption,
 } from '../../services/issues.services';
 import {
   pickCaseAttachmentsFromSource,
@@ -49,7 +51,7 @@ type ComplainantMode = 'member' | 'myself';
 
 /**
  * New case — CRM CreateCasesDrawer / ComplaintFields people model:
- * 1. Owner (creator)     → owner.userId
+ * 1. Owner (assignee)    → owner.userId (self or another officer)
  * 2. Complaint type      → drives MOM / MOSP related fields
  * 3. Complainant         → memberIds[0]
  * 4. Related member      → memberIds[1]
@@ -70,12 +72,27 @@ const NewCaseScreen = () => {
   const [complaintType, setComplaintType] = useState('');
   const [serviceProvider, setServiceProvider] = useState('');
   const [description, setDescription] = useState('');
+  const [availability, setAvailability] = useState('');
+  const [origin, setOrigin] = useState('');
+  const [issueSource, setIssueSource] = useState('');
+  const [priority, setPriority] = useState('MEDIUM');
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString());
+  const [ownerUserId, setOwnerUserId] = useState('');
+  const [ownerOptions, setOwnerOptions] = useState<TeamUserOption[]>([]);
+  const [loadingOwners, setLoadingOwners] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<PendingAttachment[]>([]);
   const [complaintTypeOptions, setComplaintTypeOptions] = useState<
     Array<{ label: string; value: string }>
   >([]);
-  const [defaultOrigin, setDefaultOrigin] = useState<string | null>(null);
+  const [originOptions, setOriginOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [issueSourceOptions, setIssueSourceOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [priorityOptions, setPriorityOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
   const [loadingLookups, setLoadingLookups] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
@@ -87,11 +104,6 @@ const NewCaseScreen = () => {
     const no = user?.memberNo;
     return no ? `${name} (${no})` : name;
   }, [user]);
-
-  const ownerLabel = useMemo(() => {
-    const name = user?.name || role;
-    return `${name} · case owner`;
-  }, [user?.name, role]);
 
   const isMom = useMemo(
     () => isMemberOnMemberComplaintType(complaintType, complaintTypeOptions),
@@ -118,20 +130,45 @@ const NewCaseScreen = () => {
       try {
         const lookups = await loadCaseLookups();
         if (cancelled) return;
+        const origins = toSelectOptions(lookups.origins || []);
+        const sources = toSelectOptions(lookups.issueSources || []);
+        const priorities = toSelectOptions(lookups.priorities || []);
         setComplaintTypeOptions(toSelectOptions(lookups.complaintTypes || []));
+        setOriginOptions(origins);
+        setIssueSourceOptions(sources);
+        setPriorityOptions(
+          priorities.length
+            ? priorities
+            : [
+                { label: 'Low', value: 'LOW' },
+                { label: 'Medium', value: 'MEDIUM' },
+                { label: 'High', value: 'HIGH' },
+              ],
+        );
         const branchOrigin = (lookups.origins || []).find(o =>
           /branch|rep|officer/i.test(`${o.code} ${o.displayName}`),
         );
-        setDefaultOrigin(
-          branchOrigin?.code || lookups.origins?.[0]?.code || null,
+        setOrigin(
+          branchOrigin?.code || lookups.origins?.[0]?.code || origins[0]?.value || '',
         );
+        const officialSource = (lookups.issueSources || []).find(o =>
+          /offical|official|rep|officer/i.test(`${o.code} ${o.displayName}`),
+        );
+        setIssueSource(
+          officialSource?.code ||
+            lookups.issueSources?.[0]?.code ||
+            sources[0]?.value ||
+            '',
+        );
+        const medium = priorities.find(p => p.value === 'MEDIUM');
+        setPriority(medium?.value || priorities[0]?.value || 'MEDIUM');
       } catch (e: any) {
         if (!cancelled) {
           setComplaintTypeOptions([]);
           Alert.alert(
             'Lookups',
             e?.message ||
-            'Could not load complaint types. You can still try later.',
+              'Could not load case lookups. You can still try later.',
           );
         }
       } finally {
@@ -142,6 +179,43 @@ const NewCaseScreen = () => {
       cancelled = true;
     };
   }, []);
+
+  // Owner picker — CRM CreateCasesDrawer (issues-complaints:write users).
+  useEffect(() => {
+    let cancelled = false;
+    const selfId =
+      user?.id && user.id !== 'bo-demo' ? String(user.id) : '';
+    if (selfId) {
+      setOwnerUserId(prev => prev || selfId);
+    }
+    (async () => {
+      setLoadingOwners(true);
+      try {
+        const options = await loadComplaintOwnerOptions({
+          currentUserId: selfId || null,
+          currentUserLabel: user?.name || role,
+        });
+        if (cancelled) return;
+        setOwnerOptions(options);
+        if (selfId) {
+          setOwnerUserId(prev =>
+            prev && options.some(o => o.value === prev) ? prev : selfId,
+          );
+        }
+      } catch {
+        if (!cancelled && selfId) {
+          setOwnerOptions([
+            { value: selfId, label: `${user?.name || role} (you)` },
+          ]);
+        }
+      } finally {
+        if (!cancelled) setLoadingOwners(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.name, role]);
 
   useEffect(() => {
     setMember(null);
@@ -162,8 +236,10 @@ const NewCaseScreen = () => {
   const errServiceProvider =
     showValidation && serviceProviderRequired && !serviceProvider.trim();
   const errType = showValidation && !complaintType;
+  const errOrigin = showValidation && !origin;
   const errDesc = showValidation && !description.trim();
   const errDate = showValidation && !issueDate;
+  const errOwner = showValidation && !ownerUserId;
 
   const onAttachSource = async (source: AttachSource) => {
     try {
@@ -195,11 +271,6 @@ const NewCaseScreen = () => {
     setComplaintType(value);
   };
 
-  const resolveComplainantId = (): string | null => {
-    if (mode === 'member') return member?.id || null;
-    return user?.id || null;
-  };
-
   const onSave = async () => {
     setShowValidation(true);
     if (!complaintType) {
@@ -229,24 +300,37 @@ const NewCaseScreen = () => {
       Alert.alert('Required', 'Please select the date received.');
       return;
     }
-    if (!defaultOrigin) {
+    if (!origin) {
       Alert.alert(
         'Required',
         'Origin could not be loaded. Please try again in a moment.',
       );
       return;
     }
-    if (!user?.id || user.id === 'bo-demo') {
+    const resolvedOwnerId =
+      ownerUserId ||
+      (user?.id && user.id !== 'bo-demo' ? String(user.id) : '');
+    if (!resolvedOwnerId) {
       Alert.alert(
         'Required',
-        'Unable to identify the signed-in user as case owner. Please sign in again.',
+        'Please select an owner to assign this case to.',
       );
       return;
     }
 
-    const complainantId = resolveComplainantId();
-    if (!complainantId) {
+    // memberIds must be profile-service profileIds (never staff userId).
+    // "Myself" means the officer is raising without a member complainant.
+    const complainantId =
+      mode === 'member' ? member?.id || null : null;
+    if (mode === 'member' && !complainantId) {
       Alert.alert('Required', 'Please select a complainant.');
+      return;
+    }
+    if (isMom && !complainantId && !relatedMember?.id) {
+      Alert.alert(
+        'Required',
+        'Member On Member requires a complainant or related member (profile id).',
+      );
       return;
     }
 
@@ -260,11 +344,14 @@ const NewCaseScreen = () => {
       const { failedUploads } = await createNewCase(
         {
           description,
+          availability: availability.trim() || null,
           complaintType,
           dateReceived: issueDate,
           memberIds,
-          origin: defaultOrigin,
-          ownerUserId: user.id,
+          origin,
+          issueSource: issueSource || null,
+          priority,
+          ownerUserId: resolvedOwnerId,
           serviceProvider: isMosp ? serviceProvider.trim() : null,
         },
         uploadedFiles,
@@ -310,49 +397,26 @@ const NewCaseScreen = () => {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          {/* Owner / creator */}
-          {/* <FieldLabel label="Raised by (owner)" />
-          <TextField
-            value={ownerLabel}
-            onChangeText={() => {}}
-            editable={false}
-          />
-          <Text style={styles.hint}>
-            You are the case owner in CRM. Complainant and related member are
-            selected below.
-          </Text> */}
-
-          {/* Complaint type — drives MOM / MOSP fields like CRM ComplaintFields */}
-          {/* <FieldLabel label="Complaint type" required error={errType} />
-          {loadingLookups ? (
+          {/* Owner — CRM CreateCasesDrawer "Owner (User Id)" */}
+          <FieldLabel label="Owner (assign to)" required error={errOwner} />
+          {loadingOwners ? (
             <View style={styles.lookupRow}>
               <ActivityIndicator color={Colors.primary} />
-              <Text style={styles.lookupText}>Loading types…</Text>
+              <Text style={styles.lookupText}>Loading owners…</Text>
             </View>
           ) : (
             <SelectField
-              value={complaintType}
-              placeholder="Select complaint type"
-              options={complaintTypeOptions}
-              onSelect={onComplaintTypeSelect}
-              error={errType}
+              value={ownerUserId}
+              placeholder="Select owner"
+              options={ownerOptions}
+              onSelect={setOwnerUserId}
+              error={errOwner}
             />
           )}
-          {isMom ? (
-            <View style={styles.typeBanner}>
-              <Text style={styles.typeBannerText}>
-                Member On Member — select complainant and the related member
-                (person the complaint is about).
-              </Text>
-            </View>
-          ) : null}
-          {isMosp ? (
-            <View style={styles.typeBanner}>
-              <Text style={styles.typeBannerText}>
-                Member On Service Provider — enter the service provider below.
-              </Text>
-            </View>
-          ) : null} */}
+          <Text style={styles.hint}>
+            Assign to yourself or another officer with complaints write access.
+            Defaults to you.
+          </Text>
 
           {/* Complainant — memberIds[0] */}
           <FieldLabel label="Complainant" required />
@@ -391,8 +455,8 @@ const NewCaseScreen = () => {
 
           <Text style={styles.hint}>
             {mode === 'member'
-              ? 'The member is recorded as complainant; you remain the case owner.'
-              : 'You are recorded as the complainant for this case.'}
+              ? 'The member profile is stored in memberIds[0]; owner.userId is the assignee above.'
+              : 'No member complainant — memberIds stays empty (not allowed for Member On Member).'}
           </Text>
 
           {mode === 'member' ? (
@@ -494,6 +558,45 @@ const NewCaseScreen = () => {
               textAlignVertical="top"
             />
           </View>
+
+          <FieldLabel label="Availability" />
+          <TextField
+            value={availability}
+            onChangeText={setAvailability}
+            placeholder="Optional availability notes"
+          />
+
+          <FieldLabel label="Origin" required error={errOrigin} />
+          {loadingLookups ? (
+            <View style={styles.lookupRow}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.lookupText}>Loading origins…</Text>
+            </View>
+          ) : (
+            <SelectField
+              value={origin}
+              placeholder="Select origin"
+              options={originOptions}
+              onSelect={setOrigin}
+              error={errOrigin}
+            />
+          )}
+
+          <FieldLabel label="Issue source" />
+          <SelectField
+            value={issueSource}
+            placeholder="Select issue source"
+            options={issueSourceOptions}
+            onSelect={setIssueSource}
+          />
+
+          <FieldLabel label="Priority" />
+          <SelectField
+            value={priority}
+            placeholder="Select priority"
+            options={priorityOptions}
+            onSelect={setPriority}
+          />
 
           <DatePicker
             label="Date received"

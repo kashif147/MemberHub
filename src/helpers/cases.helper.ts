@@ -118,7 +118,9 @@ export type CaseDetailModel = {
   priority: string;
   priorityLabel: string;
   origin: string;
+  originCode: string;
   issueSource: string;
+  issueSourceCode: string;
   complainant: string;
   ownerTeam: string;
   ownerUserId: string;
@@ -126,8 +128,13 @@ export type CaseDetailModel = {
   createdOn: string;
   updatedAt: string;
   dateResolved: string;
+  dueDate: string;
   availability: string;
+  serviceProvider: string;
+  externalAgency: string;
+  externalCaseRef: string;
   memberIds: string[];
+  relatedMemberId: string;
   raw: any;
 };
 
@@ -145,6 +152,9 @@ export const mapIssueToDetail = (iss: any): CaseDetailModel | null => {
     IR: 'Industrial Relations',
     DP: 'Data Protection',
   };
+  const memberIds = Array.isArray(iss?.memberIds)
+    ? iss.memberIds.map(String)
+    : [];
 
   return {
     id,
@@ -154,7 +164,8 @@ export const mapIssueToDetail = (iss: any): CaseDetailModel | null => {
     ),
     description: stripHtml(iss?.description) || '—',
     issueType,
-    issueTypeLabel: typeLabels[issueType] || formatIssueEnumLabel(issueType) || '—',
+    issueTypeLabel:
+      typeLabels[issueType] || formatIssueEnumLabel(issueType) || '—',
     complaintType,
     complaintTypeLabel: formatIssueEnumLabel(complaintType) || '—',
     issueStatus: String(iss?.issueStatus || ''),
@@ -162,28 +173,42 @@ export const mapIssueToDetail = (iss: any): CaseDetailModel | null => {
     priority: String(iss?.priority || ''),
     priorityLabel: formatIssueEnumLabel(iss?.priority) || '—',
     origin: formatIssueEnumLabel(iss?.origin) || displayValue(iss?.origin),
+    originCode: String(iss?.origin || ''),
     issueSource:
       formatIssueEnumLabel(iss?.issueSource) || displayValue(iss?.issueSource),
+    issueSourceCode: String(iss?.issueSource || ''),
     complainant: memberFromIssue(iss),
     ownerTeam: displayValue(iss?.owner?.team),
-    ownerUserId: displayValue(iss?.owner?.userId),
+    /** Raw staff user id for assignment pickers (not display-formatted). */
+    ownerUserId: String(iss?.owner?.userId || '').trim(),
     dateReceived: formatCaseDate(iss?.dateReceived),
     createdOn: formatCaseDateTime(iss?.createdOn || iss?.createdAt),
     updatedAt: formatCaseDateTime(iss?.updatedAt),
     dateResolved: formatCaseDate(iss?.dateResolved),
+    dueDate: formatCaseDate(iss?.dueDate),
     availability: stripHtml(iss?.availability) || '—',
-    memberIds: Array.isArray(iss?.memberIds)
-      ? iss.memberIds.map(String)
-      : [],
+    serviceProvider: displayValue(
+      iss?.serviceProvider || iss?.complaint?.serviceProvider,
+    ),
+    externalAgency: displayValue(
+      iss?.externalAgency || iss?.complaint?.externalAgency,
+    ),
+    externalCaseRef: displayValue(
+      iss?.externalCaseRef || iss?.complaint?.externalCaseRef,
+    ),
+    memberIds,
+    relatedMemberId: memberIds[1] || '—',
     raw: iss,
   };
 };
 
 /**
- * Map issue-service GET /issues row → MemberHub Cases card
- * (same source as ProjectShell-1 CasesSummary).
+ * Map issue-service GET /issues or /issues/mine row → MemberHub Cases card.
  */
-export const mapIssueToCaseItem = (iss: any): CaseItem => {
+export const mapIssueToCaseItem = (
+  iss: any,
+  currentUserId?: string | null,
+): CaseItem => {
   const id = String(iss?._id || iss?.id || '');
   const caseNo =
     String(
@@ -191,6 +216,16 @@ export const mapIssueToCaseItem = (iss: any): CaseItem => {
         iss?.caseFileNumber ||
         (id ? `CS-${id.slice(-5).toUpperCase()}` : ''),
     ).trim() || '—';
+
+  let relation: CaseItem['relation'];
+  const uid = String(currentUserId || '').trim();
+  if (uid) {
+    const created = String(iss?.createdBy || '') === uid;
+    const assigned = String(iss?.owner?.userId || '') === uid;
+    if (created && assigned) relation = 'both';
+    else if (created) relation = 'created';
+    else if (assigned) relation = 'assigned';
+  }
 
   return {
     id,
@@ -204,5 +239,6 @@ export const mapIssueToCaseItem = (iss: any): CaseItem => {
         : undefined,
     date: formatCaseDate(iss?.dateReceived || iss?.createdAt || iss?.createdOn),
     status: mapIssueStatusToUi(iss?.issueStatus),
+    relation,
   };
 };

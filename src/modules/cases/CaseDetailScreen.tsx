@@ -33,11 +33,14 @@ import {
   X,
 } from 'lucide-react-native';
 import { Header } from '../../components/Header';
+import { FieldLabel, SelectField } from '../application/formFields';
 import {
   addCaseNote,
   getHistoryActionColor,
   loadCaseDetail,
+  loadOwnerOptions,
   resolveCaseAttachmentUrl,
+  updateCaseOwner,
   uploadCaseAttachments,
   type CaseActivityAttachment,
   type CaseActivityItem,
@@ -45,6 +48,7 @@ import {
   type CaseDetailBundle,
   type CaseHistoryItem,
   type PendingAttachment,
+  type TeamUserOption,
 } from '../../services/issues.services';
 import {
   pickCaseAttachmentsFromSource,
@@ -263,10 +267,18 @@ const CaseDetailScreen = () => {
     null,
   );
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [ownerUserId, setOwnerUserId] = useState('');
+  const [ownerOptions, setOwnerOptions] = useState<TeamUserOption[]>([]);
+  const [loadingOwners, setLoadingOwners] = useState(false);
+  const [savingOwner, setSavingOwner] = useState(false);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
   const isClosed = bundle?.issue?.issueStatusUi === 'Closed';
+  const selfId = user?.id && user.id !== 'bo-demo' ? String(user.id) : '';
+  const ownerDirty =
+    Boolean(ownerUserId) &&
+    ownerUserId !== String(bundle?.issue?.ownerUserId || '');
 
   useEffect(() => {
     const showEvent =
@@ -304,6 +316,7 @@ const CaseDetailScreen = () => {
       try {
         const data = await loadCaseDetail(issueId);
         setBundle(data);
+        setOwnerUserId(String(data.issue?.ownerUserId || '').trim());
       } catch (e: any) {
         setBundle(null);
         setError(e?.message || 'Failed to load case details');
@@ -314,6 +327,63 @@ const CaseDetailScreen = () => {
     },
     [issueId],
   );
+
+  // Owner options — CRM CasesDetails useTeamUserOptions(issueType resource).
+  useEffect(() => {
+    const issueType = bundle?.issue?.issueType;
+    if (!issueType) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingOwners(true);
+      try {
+        const options = await loadOwnerOptions({
+          issueType,
+          currentUserId: selfId || null,
+          currentUserLabel: user?.name || role,
+        });
+        if (cancelled) return;
+        setOwnerOptions(options);
+        // Keep current assignee visible even if not in the write-permission list.
+        const current = String(bundle?.issue?.ownerUserId || '').trim();
+        if (current && !options.some(o => o.value === current)) {
+          setOwnerOptions(prev => [
+            { value: current, label: current },
+            ...prev,
+          ]);
+        }
+      } catch {
+        if (!cancelled) setOwnerOptions([]);
+      } finally {
+        if (!cancelled) setLoadingOwners(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bundle?.issue?.issueType,
+    bundle?.issue?.ownerUserId,
+    selfId,
+    user?.name,
+    role,
+  ]);
+
+  const onSaveOwner = async () => {
+    if (!issueId || !ownerUserId || isClosed) return;
+    setSavingOwner(true);
+    try {
+      await updateCaseOwner(issueId, ownerUserId);
+      Alert.alert('Saved', 'Case owner updated.');
+      await load(true);
+    } catch (e: any) {
+      Alert.alert(
+        'Could not update owner',
+        e?.message || 'Please try again.',
+      );
+    } finally {
+      setSavingOwner(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -555,6 +625,42 @@ const CaseDetailScreen = () => {
             <FieldRow label="Issue source" value={issue.issueSource} />
             <FieldRow label="Complainant" value={issue.complainant} />
             <FieldRow label="Owner team" value={issue.ownerTeam} />
+            <View style={styles.ownerBlock}>
+              <FieldLabel label="Owner (User Id)" />
+              {loadingOwners ? (
+                <View style={styles.ownerLoading}>
+                  <ActivityIndicator color={Colors.primary} size="small" />
+                  <Text style={styles.ownerLoadingText}>Loading owners…</Text>
+                </View>
+              ) : (
+                <SelectField
+                  value={ownerUserId}
+                  placeholder="Select owner"
+                  options={ownerOptions}
+                  onSelect={setOwnerUserId}
+                />
+              )}
+              {!isClosed ? (
+                <TouchableOpacity
+                  style={[
+                    styles.ownerSaveBtn,
+                    (!ownerDirty || savingOwner) && styles.ownerSaveBtnDisabled,
+                  ]}
+                  onPress={onSaveOwner}
+                  disabled={!ownerDirty || savingOwner}
+                  activeOpacity={0.85}>
+                  {savingOwner ? (
+                    <ActivityIndicator color={Colors.surface} size="small" />
+                  ) : (
+                    <Text style={styles.ownerSaveText}>Save assignment</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.ownerClosedHint}>
+                  Owner cannot be changed on a closed case.
+                </Text>
+              )}
+            </View>
             <FieldRow label="Created" value={issue.createdOn} />
             <FieldRow label="Last updated" value={issue.updatedAt} last />
           </SectionCard>
@@ -933,6 +1039,47 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.textPrimary,
     fontFamily: FontFamily.medium,
+  },
+  ownerBlock: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+    gap: 8,
+  },
+  ownerLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  ownerLoadingText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.regular,
+  },
+  ownerSaveBtn: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radii.md,
+    minWidth: 140,
+    alignItems: 'center',
+  },
+  ownerSaveBtnDisabled: {
+    opacity: 0.45,
+  },
+  ownerSaveText: {
+    color: Colors.surface,
+    fontSize: 13,
+    fontFamily: FontFamily.semiBold,
+    fontWeight: '700',
+  },
+  ownerClosedHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontFamily: FontFamily.regular,
   },
   emptyInline: {
     paddingVertical: 8,

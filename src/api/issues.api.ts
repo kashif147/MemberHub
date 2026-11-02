@@ -66,23 +66,75 @@ export const fetchIssueStatusesRequest = async (issueType: string) => {
   };
 };
 
+const toIssueList = (raw: any): any[] => {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.data)) return raw.data;
+  if (Array.isArray(raw?.results)) return raw.results;
+  if (Array.isArray(raw?.issues)) return raw.issues;
+  return [];
+};
+
 /** Same as ProjectShell-1 issuesApi.fetchIssues — GET /issues */
 export const fetchIssuesRequest = async (params: Record<string, any> = {}) => {
   const res = await client.get('/issues', { params });
-  const raw = unwrap(res);
-  const list = Array.isArray(raw)
-    ? raw
-    : Array.isArray(raw?.data)
-      ? raw.data
-      : Array.isArray(raw?.results)
-        ? raw.results
-        : Array.isArray(raw?.issues)
-          ? raw.issues
-          : [];
+  return {
+    status: res.status,
+    data: toIssueList(unwrap(res)),
+    error: res.data,
+  };
+};
+
+export type MyIssuesScope = 'all' | 'created' | 'assigned';
+
+export type MyIssuesOpenCounts = {
+  created: number;
+  assigned: number;
+};
+
+export type MyIssuesMeta = {
+  scope: MyIssuesScope;
+  page: number;
+  limit: number;
+  total: number;
+  openCounts: MyIssuesOpenCounts;
+};
+
+/**
+ * GET /issues/mine — cases the caller created and/or is assigned to
+ * (issue.controller listMyIssues). MemberHub Cases list uses this exclusively
+ * so other officers' cases never appear unless the caller is creator/assignee.
+ */
+export const fetchMyIssuesRequest = async (
+  params: {
+    scope?: MyIssuesScope;
+    state?: 'open' | 'closed';
+    issueType?: string;
+    priority?: string;
+    issueStatus?: string;
+    page?: number;
+    limit?: number;
+  } = {},
+) => {
+  const res = await client.get('/issues/mine', { params });
+  const body = res?.data;
+  const list = toIssueList(unwrap(res));
+  const metaRaw = body?.meta || {};
+  const openCounts = metaRaw?.openCounts || {};
+  const meta: MyIssuesMeta = {
+    scope: (metaRaw.scope as MyIssuesScope) || params.scope || 'all',
+    page: Number(metaRaw.page) || params.page || 1,
+    limit: Number(metaRaw.limit) || params.limit || 20,
+    total: Number(metaRaw.total) || list.length,
+    openCounts: {
+      created: Number(openCounts.created) || 0,
+      assigned: Number(openCounts.assigned) || 0,
+    },
+  };
   return {
     status: res.status,
     data: list,
-    error: res.data,
+    meta,
+    error: body,
   };
 };
 
@@ -141,6 +193,22 @@ export const fetchIssueAttachmentsRequest = async (issueId: string) => {
 /** Same as ProjectShell-1 issuesApi.createIssue */
 export const createIssueRequest = async (payload: Record<string, any>) => {
   const res = await client.post('/issues', payload);
+  return {
+    status: res.status,
+    data: unwrap(res),
+    error: res.data,
+  };
+};
+
+/**
+ * Same as ProjectShell-1 issuesApi.updateIssue — PUT /issues/:id
+ * (owner reassignment, description, etc.).
+ */
+export const updateIssueRequest = async (
+  issueId: string,
+  payload: Record<string, any>,
+) => {
+  const res = await client.put(`/issues/${issueId}`, payload);
   return {
     status: res.status,
     data: unwrap(res),
