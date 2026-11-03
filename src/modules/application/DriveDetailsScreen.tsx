@@ -31,6 +31,7 @@ import {
   ensureDriveAcceptingRegistrations,
   fetchMembershipDrive,
   fetchMembershipDriveStats,
+  isDriveEditable,
   updateMembershipDriveStatus,
   type MembershipDriveRecord,
   type MembershipDriveStats,
@@ -135,17 +136,8 @@ const DriveDetailsScreen = () => {
   const dateRange = formatDriveDateRange(drive?.startDate, drive?.endDate);
   const subtitle = [drive?.driveType, dateRange].filter(Boolean).join(' · ');
 
-  const onUpdateStatus = async () => {
-    if (!drive) return;
-    if (selectedUi === 'Paused' || selectedApi == null) {
-      Alert.alert(
-        'Update status',
-        'Paused is shown in the design but is not supported by the API yet.',
-      );
-      setSelectedUi(apiStatusToUi(drive.status));
-      return;
-    }
-    if (!statusDirty) return;
+  const applyStatusUpdate = async () => {
+    if (!drive || selectedApi == null) return;
     setSaving(true);
     try {
       const updated = await updateMembershipDriveStatus(drive._id, selectedApi);
@@ -160,6 +152,43 @@ const DriveDetailsScreen = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onUpdateStatus = () => {
+    if (!drive) return;
+    if (selectedUi === 'Paused' || selectedApi == null) {
+      Alert.alert(
+        'Update status',
+        'Paused is shown in the design but is not supported by the API yet.',
+      );
+      setSelectedUi(apiStatusToUi(drive.status));
+      return;
+    }
+    if (!statusDirty) return;
+
+    const fromLabel = apiStatusToUi(drive.status);
+    const description =
+      selectedOpt?.description ||
+      `Change this drive’s status to ${selectedUi}.`;
+
+    Alert.alert(
+      'Update drive status?',
+      `Change “${drive.name}” from ${fromLabel} to ${selectedUi}?\n\n${description}`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => setSelectedUi(apiStatusToUi(drive.status)),
+        },
+        {
+          text: 'Update status',
+          style: selectedApi === 'INACTIVE' ? 'destructive' : 'default',
+          onPress: () => {
+            applyStatusUpdate();
+          },
+        },
+      ],
+    );
   };
 
   const onRegisterMember = async () => {
@@ -194,6 +223,15 @@ const DriveDetailsScreen = () => {
     (drive.status === 'IN_PROGRESS' ||
       drive.status === 'DRAFT' ||
       drive.status === 'COMPLETED');
+
+  /** Owner + DRAFT/IN_PROGRESS — matches backend EDITABLE_STATUSES / updateDrive. */
+  const canEditDrive =
+    !!drive && isOwner && isDriveEditable(drive.status);
+
+  const onEditDrive = () => {
+    if (!drive || !canEditDrive) return;
+    navigation.navigate(STACKS.CREATE_DRIVE, { driveId: drive._id });
+  };
 
   if (loading && !drive) {
     return (
@@ -316,6 +354,15 @@ const DriveDetailsScreen = () => {
             );
           })}
         </View>
+
+        {canEditDrive ? (
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={onEditDrive}
+            activeOpacity={0.85}>
+            <Text style={styles.editBtnText}>Edit drive details</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.actions}>
           <TouchableOpacity
@@ -539,6 +586,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 18,
+  },
+  editBtn: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  editBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
   actions: {
     flexDirection: 'row',

@@ -80,6 +80,21 @@ export const createMembershipDriveRequest = async (
   return { status: res.status, data: unwrap(res), error: res.data };
 };
 
+/**
+ * PUT /membership-drives/:id — edit drive fields (owner only; DRAFT / IN_PROGRESS).
+ * Body matches updateSchema: name, driveType, workLocations, startDate, endDate,
+ * signUpTarget, notes (at least one field).
+ */
+export type UpdateMembershipDriveBody = Partial<CreateMembershipDriveBody>;
+
+export const updateMembershipDriveRequest = async (
+  id: string,
+  body: UpdateMembershipDriveBody,
+) => {
+  const res = await profile.put(`/membership-drives/${id}`, body);
+  return { status: res.status, data: unwrap(res), error: res.data };
+};
+
 export const getMembershipDriveRequest = async (id: string) => {
   const res = await profile.get(`/membership-drives/${id}`);
   return { status: res.status, data: unwrap(res), error: res.data };

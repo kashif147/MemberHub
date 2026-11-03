@@ -226,6 +226,86 @@ export const buildComplaintCreatePayload = (values: NewCaseFormValues) => {
   return payload;
 };
 
+/**
+ * PUT /issues/:id form values — same editable base fields as ProjectShell
+ * CasesDetails / buildIssueUpdatePayload (plus COMPLAINT type fields MemberHub uses).
+ */
+export type CaseEditFormValues = {
+  description: string;
+  availability?: string | null;
+  issueSource?: string | null;
+  issueSourceOther?: string | null;
+  origin?: string | null;
+  priority?: string | null;
+  dateReceived?: string | null;
+  ownerUserId: string;
+  complaintType?: string | null;
+  serviceProvider?: string | null;
+};
+
+/**
+ * Build PUT /issues/:id payload (CRM CasesDetails handleSaveGeneral).
+ * Does not send issueType / protected server fields.
+ */
+export const buildIssueUpdatePayload = (
+  values: CaseEditFormValues,
+  issueType: string,
+) => {
+  const ownerUserId = String(values.ownerUserId || '').trim();
+  if (!ownerUserId) {
+    throw new Error('owner.userId is required');
+  }
+  const description = String(values.description || '').trim();
+  if (!description) {
+    throw new Error('Description is required');
+  }
+
+  const raw: Record<string, unknown> = {
+    description,
+    availability: String(values.availability || '').trim() || null,
+    issueSource: String(values.issueSource || '').trim() || null,
+    issueSourceOther: String(values.issueSourceOther || '').trim() || null,
+    origin: String(values.origin || '').trim() || null,
+    priority:
+      String(values.priority || '').trim() || DEFAULT_PRIORITY,
+    dateReceived: toDateReceivedIso(values.dateReceived) || null,
+    owner: { userId: ownerUserId },
+  };
+
+  if (String(issueType || '').toUpperCase() === 'COMPLAINT') {
+    raw.complaintType = String(values.complaintType || '').trim() || null;
+    raw.serviceProvider =
+      String(values.serviceProvider || '').trim() || null;
+  }
+
+  const allowed = new Set<string>([
+    'description',
+    'availability',
+    'issueSource',
+    'issueSourceOther',
+    'origin',
+    'priority',
+    'dateReceived',
+    'owner',
+    ...(String(issueType || '').toUpperCase() === 'COMPLAINT'
+      ? (['complaintType', 'serviceProvider'] as const)
+      : []),
+  ]);
+
+  const payload: Record<string, unknown> = {};
+  Object.keys(raw).forEach(key => {
+    if (!allowed.has(key)) return;
+    const v = raw[key];
+    if (key === 'owner') {
+      payload[key] = v;
+      return;
+    }
+    if (!isEmpty(v)) payload[key] = v;
+  });
+
+  return payload;
+};
+
 /** NOTE activity body for POST /issues/:id/activities (issueActivity.controller). */
 export const buildNoteActivityPayload = (noteText: string) => ({
   activityType: 'NOTE',

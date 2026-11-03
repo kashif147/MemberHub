@@ -11,7 +11,12 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { Plus, Check } from 'lucide-react-native';
 import { Header } from '../../components/Header';
@@ -24,14 +29,29 @@ import {
   toIsoDaysFromNow,
   toIsoStartOfDay,
 } from '../../helpers/membershipDrive.helper';
-import { createMembershipDrive } from '../../services/membershipDrive.services';
+import {
+  createMembershipDrive,
+  fetchMembershipDrive,
+  isDriveEditable,
+  updateMembershipDrive,
+} from '../../services/membershipDrive.services';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { RootState, AppDispatch } from '../../store';
 
+const toDateInputValue = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+};
+
 const CreateDriveScreen = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<Record<string, object | undefined>, string>>();
   const dispatch = useDispatch<AppDispatch>();
   const user = useSelector((s: RootState) => s.auth.user);
+  const editDriveId = (route.params as { driveId?: string } | undefined)?.driveId;
+  const isEdit = Boolean(editDriveId);
 
   const [name, setName] = useState('');
   const [driveType, setDriveType] = useState<string>(DRIVE_TYPE_OPTIONS[0]);
@@ -44,6 +64,7 @@ const CreateDriveScreen = () => {
   const [showValidation, setShowValidation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingDrive, setLoadingDrive] = useState(isEdit);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
@@ -55,6 +76,12 @@ const CreateDriveScreen = () => {
       ),
     [user?.workLocationRows],
   );
+
+  const driveTypeOptions = useMemo(() => {
+    const base = [...DRIVE_TYPE_OPTIONS] as string[];
+    if (driveType && !base.includes(driveType)) base.push(driveType);
+    return base;
+  }, [driveType]);
 
   const ensureLocations = useCallback(async () => {
     if (user?.workLocationRows?.some(r => r.id)) return;
@@ -72,11 +99,67 @@ const CreateDriveScreen = () => {
     }, [ensureLocations]),
   );
 
+  // Prefill form when editing (PUT /membership-drives/:id).
+  useEffect(() => {
+    if (!editDriveId) {
+      setLoadingDrive(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoadingDrive(true);
+      try {
+        const drive = await fetchMembershipDrive(editDriveId);
+        if (cancelled) return;
+        if (!isDriveEditable(drive.status)) {
+          Alert.alert(
+            'Edit drive',
+            `A ${drive.status} drive can no longer be edited.`,
+            [{ text: 'OK', onPress: () => navigation.goBack() }],
+          );
+          return;
+        }
+        setName(drive.name || '');
+        const type = String(drive.driveType || '').trim();
+        setDriveType(
+          type && (DRIVE_TYPE_OPTIONS as readonly string[]).includes(type)
+            ? type
+            : type || DRIVE_TYPE_OPTIONS[0],
+        );
+        setSelectedLocationIds(
+          Array.isArray(drive.workLocations)
+            ? drive.workLocations.map(String).filter(Boolean)
+            : [],
+        );
+        setStartDate(toDateInputValue(drive.startDate) || toIsoStartOfDay());
+        setEndDate(toDateInputValue(drive.endDate) || toIsoDaysFromNow(18));
+        setSignUpTarget(String(Number(drive.signUpTarget) || 0));
+        setNotes(String(drive.notes || '').trim());
+      } catch (e: any) {
+        if (!cancelled) {
+          Alert.alert(
+            'Edit drive',
+            e?.message || 'Could not load this drive.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }],
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingDrive(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editDriveId, navigation]);
+
   useEffect(() => {
     // Drop selections that are no longer in scope after /me refresh
+    // (skip while loading edit prefill so we don't wipe ids before options arrive)
+    if (loadingDrive) return;
     const allowed = new Set(workLocationOptions.map(r => r.id));
+    if (allowed.size === 0) return;
     setSelectedLocationIds(prev => prev.filter(id => allowed.has(id)));
-  }, [workLocationOptions]);
+  }, [workLocationOptions, loadingDrive]);
 
   const errName = showValidation && !name.trim();
   const errType = showValidation && !driveType;
@@ -94,7 +177,37 @@ const CreateDriveScreen = () => {
 
   const onCancel = () => navigation.goBack();
 
-  const onCreate = async () => {
+  const buildPayload = () => {
+    const target = Number.parseInt(signUpTarget.trim(), 10);
+    return {
+      name: name.trim(),
+      driveType,
+      // API expects work-location lookup ids, not display names.
+      workLocations: selectedLocationIds,
+      startDate,
+      endDate,
+      signUpTarget: Number.isFinite(target) && target >= 0 ? target : 0,
+      notes: notes.trim() || null,
+    };
+  };
+
+  const goToDriveDetails = (driveId: string) => {
+    const routeNames = navigation.getState()?.routeNames || [];
+    if (routeNames.includes(STACKS.DRIVE_DETAILS)) {
+      if (isEdit) {
+        navigation.navigate(STACKS.DRIVE_DETAILS, { driveId });
+      } else {
+        navigation.replace(STACKS.DRIVE_DETAILS, { driveId });
+      }
+    } else {
+      navigation.navigate(STACKS.MORE, {
+        screen: STACKS.DRIVE_DETAILS,
+        params: { driveId },
+      });
+    }
+  };
+
+  const onSave = async () => {
     setShowValidation(true);
     if (
       !name.trim() ||
@@ -106,43 +219,56 @@ const CreateDriveScreen = () => {
       return;
     }
     if (new Date(endDate) < new Date(startDate)) {
-      Alert.alert('Create drive', 'End date must be on or after the start date.');
+      Alert.alert(
+        isEdit ? 'Edit drive' : 'Create drive',
+        'End date must be on or after the start date.',
+      );
       return;
     }
     setSaving(true);
     try {
-      const target = Number.parseInt(signUpTarget.trim(), 10);
-      const drive = await createMembershipDrive({
-        name: name.trim(),
-        driveType,
-        // API expects work-location lookup ids, not display names.
-        workLocations: selectedLocationIds,
-        startDate,
-        endDate,
-        signUpTarget: Number.isFinite(target) && target >= 0 ? target : 0,
-        notes: notes.trim() || null,
-      });
-      // Prefer Drive details when available (More stack); else hub / cross-tab.
-      const routeNames = navigation.getState()?.routeNames || [];
-      if (routeNames.includes(STACKS.DRIVE_DETAILS)) {
-        navigation.replace(STACKS.DRIVE_DETAILS, { driveId: drive._id });
+      const payload = buildPayload();
+      if (isEdit && editDriveId) {
+        const updated = await updateMembershipDrive(editDriveId, payload);
+        Alert.alert('Drive updated', 'Your changes have been saved.', [
+          { text: 'OK', onPress: () => goToDriveDetails(updated._id) },
+        ]);
       } else {
-        navigation.navigate(STACKS.MORE, {
-          screen: STACKS.DRIVE_DETAILS,
-          params: { driveId: drive._id },
-        });
+        const drive = await createMembershipDrive(payload);
+        goToDriveDetails(drive._id);
       }
     } catch (e: any) {
-      Alert.alert('Create drive', e?.message || 'Could not save this drive.');
+      Alert.alert(
+        isEdit ? 'Edit drive' : 'Create drive',
+        e?.message || 'Could not save this drive.',
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  if (loadingDrive) {
+    return (
+      <View style={styles.screen}>
+        <Header
+          title="Edit membership drive"
+          role={role}
+          branch={branch}
+          showBack
+          onBack={onCancel}
+        />
+        <View style={styles.loadingCenter}>
+          <ActivityIndicator color={Colors.primary} />
+          <Text style={styles.helper}>Loading drive…</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <Header
-        title="New membership drive"
+        title={isEdit ? 'Edit membership drive' : 'New membership drive'}
         role={role}
         branch={branch}
         showBack
@@ -159,8 +285,9 @@ const CreateDriveScreen = () => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <Text style={styles.intro}>
-            Applications registered during the drive are tagged to it, so
-            sign-ups and rejoins are tracked against the target.
+            {isEdit
+              ? 'Update drive details. Only Scheduled and Live drives can be edited.'
+              : 'Applications registered during the drive are tagged to it, so sign-ups and rejoins are tracked against the target.'}
           </Text>
 
           <FieldLabel label="Drive name" required error={errName} />
@@ -175,7 +302,7 @@ const CreateDriveScreen = () => {
           <FieldLabel label="Drive type" required error={errType} />
           <RadioRow
             value={driveType}
-            options={[...DRIVE_TYPE_OPTIONS]}
+            options={driveTypeOptions}
             onChange={setDriveType}
             stacked
             error={errType}
@@ -292,13 +419,15 @@ const CreateDriveScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.createBtn, saving && styles.createBtnDisabled]}
-              onPress={onCreate}
+              onPress={onSave}
               activeOpacity={0.85}
               disabled={saving}>
               {saving ? (
                 <ActivityIndicator color={Colors.primary} />
               ) : (
-                <Text style={styles.createText}>Create drive</Text>
+                <Text style={styles.createText}>
+                  {isEdit ? 'Save changes' : 'Create drive'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -378,6 +507,13 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 18,
     marginBottom: 6,
+  },
+  loadingCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
   },
   loadingRow: {
     flexDirection: 'row',

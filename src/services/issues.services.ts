@@ -33,7 +33,9 @@ import {
 } from '../helpers/cases.helper';
 import {
   buildComplaintCreatePayload,
+  buildIssueUpdatePayload,
   buildNoteActivityPayload,
+  type CaseEditFormValues,
   type NewCaseFormValues,
 } from '../helpers/issuePayload.helper';
 import type { CaseItem } from '../data/mockCases';
@@ -181,6 +183,24 @@ export const updateCaseOwner = async (
   assertOk(res, 'Failed to update case owner');
   return res.data;
 };
+
+/**
+ * Edit an open issue — PUT /issues/:id
+ * (CRM CasesDetails handleSaveGeneral).
+ */
+export const updateCaseGeneral = async (
+  issueId: string,
+  issueType: string,
+  values: CaseEditFormValues,
+) => {
+  if (!issueId) throw new Error('Missing case id');
+  const payload = buildIssueUpdatePayload(values, issueType);
+  const res = await updateIssueRequest(issueId, payload);
+  assertOk(res, 'Failed to update case');
+  return res.data;
+};
+
+export type { CaseEditFormValues };
 
 export type CaseActivityAttachment = {
   index: number;

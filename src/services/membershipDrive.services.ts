@@ -6,13 +6,21 @@ import {
   linkDriveRegistrationRequest,
   listDriveRegistrationsRequest,
   listMembershipDrivesRequest,
+  updateMembershipDriveRequest,
   type CreateMembershipDriveBody,
   type DriveRegistration,
   type DriveStatus,
   type MembershipDriveRecord,
   type MembershipDriveStats,
+  type UpdateMembershipDriveBody,
 } from '../api/membershipDrive.api';
 import { isOpenDrive } from '../helpers/membershipDrive.helper';
+
+/** Backend EDITABLE_STATUSES — details may be edited only while open. */
+export const DRIVE_EDITABLE_STATUSES: DriveStatus[] = ['DRAFT', 'IN_PROGRESS'];
+
+export const isDriveEditable = (status?: string) =>
+  DRIVE_EDITABLE_STATUSES.includes((status || '') as DriveStatus);
 
 const apiError = (res: any, fallback: string) => {
   const msg =
@@ -87,6 +95,24 @@ export const createMembershipDrive = async (
     throw new Error('Drive created but response was empty');
   }
   return created;
+};
+
+/**
+ * Edit drive details — PUT /membership-drives/:id
+ * (controller updateDrive; owner-only; DRAFT / IN_PROGRESS only).
+ */
+export const updateMembershipDrive = async (
+  driveId: string,
+  payload: UpdateMembershipDriveBody,
+): Promise<MembershipDriveRecord> => {
+  if (!driveId) throw new Error('Missing drive id');
+  const res = await updateMembershipDriveRequest(driveId, payload);
+  if (!(res.status >= 200 && res.status < 300)) {
+    throw apiError(res, 'Could not update this drive');
+  }
+  const updated = normalizeDrive(res.data);
+  if (!updated) throw new Error('Drive update returned empty');
+  return updated;
 };
 
 /** Create a drive, then start it so applications can be attributed. */

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -33,14 +33,20 @@ import {
   X,
 } from 'lucide-react-native';
 import { Header } from '../../components/Header';
-import { FieldLabel, SelectField } from '../application/formFields';
+import {
+  FieldLabel,
+  SelectField,
+  TextField,
+} from '../application/formFields';
+import DatePicker from '../../common/DatePicker';
 import {
   addCaseNote,
   getHistoryActionColor,
   loadCaseDetail,
+  loadCaseLookups,
   loadOwnerOptions,
   resolveCaseAttachmentUrl,
-  updateCaseOwner,
+  updateCaseGeneral,
   uploadCaseAttachments,
   type CaseActivityAttachment,
   type CaseActivityItem,
@@ -56,6 +62,10 @@ import {
 } from '../../helpers/documentPicker.helper';
 import { chooseAttachSource } from '../../helpers/attachSource.helper';
 import { displayValue, formatIssueEnumLabel } from '../../helpers/cases.helper';
+import {
+  isMemberOnServiceProviderComplaintType,
+  toSelectOptions,
+} from '../../helpers/issuePayload.helper';
 import { Colors, FontFamily, Radii } from '../../theme';
 import { STACKS } from '../../enums/ScreenEnums';
 import type { CaseStatus } from '../../data/mockCases';
@@ -66,6 +76,11 @@ const stripHtml = (value: string) =>
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+const displayOrDash = (value?: string | null) => {
+  const v = String(value || '').trim();
+  return v && v !== '—' ? v : '—';
+};
 
 type RouteParams = {
   [STACKS.CASE_DETAIL]: { issueId: string; title?: string };
@@ -270,15 +285,49 @@ const CaseDetailScreen = () => {
   const [ownerUserId, setOwnerUserId] = useState('');
   const [ownerOptions, setOwnerOptions] = useState<TeamUserOption[]>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
-  const [savingOwner, setSavingOwner] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [description, setDescription] = useState('');
+  const [availability, setAvailability] = useState('');
+  const [priority, setPriority] = useState('MEDIUM');
+  const [origin, setOrigin] = useState('');
+  const [issueSource, setIssueSource] = useState('');
+  const [issueSourceOther, setIssueSourceOther] = useState('');
+  const [dateReceived, setDateReceived] = useState('');
+  const [complaintType, setComplaintType] = useState('');
+  const [serviceProvider, setServiceProvider] = useState('');
+  const [complaintTypeOptions, setComplaintTypeOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [originOptions, setOriginOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [issueSourceOptions, setIssueSourceOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [priorityOptions, setPriorityOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
 
   const role = user?.role || 'Branch Officer';
   const branch = user?.branches || 'Beaumont & Mater branches';
   const isClosed = bundle?.issue?.issueStatusUi === 'Closed';
   const selfId = user?.id && user.id !== 'bo-demo' ? String(user.id) : '';
-  const ownerDirty =
-    Boolean(ownerUserId) &&
-    ownerUserId !== String(bundle?.issue?.ownerUserId || '');
+  /** Creator or assignee can edit open cases (CRM CasesDetails write path). */
+  const canEdit = Boolean(
+    !isClosed &&
+      selfId &&
+      bundle?.issue &&
+      (String(bundle.issue.createdBy) === selfId ||
+        String(bundle.issue.ownerUserId) === selfId),
+  );
+  const isMosp = useMemo(
+    () =>
+      isMemberOnServiceProviderComplaintType(
+        complaintType,
+        complaintTypeOptions,
+      ),
+    [complaintType, complaintTypeOptions],
+  );
 
   useEffect(() => {
     const showEvent =
@@ -316,7 +365,27 @@ const CaseDetailScreen = () => {
       try {
         const data = await loadCaseDetail(issueId);
         setBundle(data);
-        setOwnerUserId(String(data.issue?.ownerUserId || '').trim());
+        const iss = data.issue;
+        const raw = iss?.raw || {};
+        setOwnerUserId(String(iss?.ownerUserId || '').trim());
+        setDescription(stripHtml(raw.description || iss?.description || ''));
+        setAvailability(
+          stripHtml(raw.availability || '').replace(/^—$/, '') ||
+            (iss?.availability !== '—' ? stripHtml(iss?.availability || '') : ''),
+        );
+        setPriority(String(raw.priority || iss?.priority || 'MEDIUM'));
+        setOrigin(String(raw.origin || iss?.originCode || ''));
+        setIssueSource(String(raw.issueSource || iss?.issueSourceCode || ''));
+        setIssueSourceOther(String(raw.issueSourceOther || iss?.issueSourceOther || ''));
+        setDateReceived(
+          iss?.dateReceivedIso ||
+            (raw.dateReceived ? new Date(raw.dateReceived).toISOString() : ''),
+        );
+        setComplaintType(String(raw.complaintType || iss?.complaintType || ''));
+        setServiceProvider(
+          String(raw.serviceProvider || '').trim() ||
+            (iss?.serviceProvider !== '—' ? String(iss?.serviceProvider || '') : ''),
+        );
       } catch (e: any) {
         setBundle(null);
         setError(e?.message || 'Failed to load case details');
@@ -327,6 +396,35 @@ const CaseDetailScreen = () => {
     },
     [issueId],
   );
+
+  // Lookups for editable summary fields (CRM CasesDetails).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const lookups = await loadCaseLookups();
+        if (cancelled) return;
+        setComplaintTypeOptions(toSelectOptions(lookups.complaintTypes || []));
+        setOriginOptions(toSelectOptions(lookups.origins || []));
+        setIssueSourceOptions(toSelectOptions(lookups.issueSources || []));
+        const priorities = toSelectOptions(lookups.priorities || []);
+        setPriorityOptions(
+          priorities.length
+            ? priorities
+            : [
+                { label: 'Low', value: 'LOW' },
+                { label: 'Medium', value: 'MEDIUM' },
+                { label: 'High', value: 'HIGH' },
+              ],
+        );
+      } catch {
+        // Keep read-only labels if lookups fail.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Owner options — CRM CasesDetails useTeamUserOptions(issueType resource).
   useEffect(() => {
@@ -368,20 +466,42 @@ const CaseDetailScreen = () => {
     role,
   ]);
 
-  const onSaveOwner = async () => {
-    if (!issueId || !ownerUserId || isClosed) return;
-    setSavingOwner(true);
+  const onSaveChanges = async () => {
+    if (!issueId || !bundle?.issue || !canEdit) return;
+    if (!description.trim()) {
+      Alert.alert('Required', 'Please enter a description.');
+      return;
+    }
+    if (!ownerUserId) {
+      Alert.alert('Required', 'Please select an owner.');
+      return;
+    }
+    if (isMosp && !serviceProvider.trim()) {
+      Alert.alert('Required', 'Please enter a service provider.');
+      return;
+    }
+    setSaving(true);
     try {
-      await updateCaseOwner(issueId, ownerUserId);
-      Alert.alert('Saved', 'Case owner updated.');
+      await updateCaseGeneral(issueId, bundle.issue.issueType, {
+        description,
+        availability: availability.trim() || null,
+        priority,
+        origin: origin || null,
+        issueSource: issueSource || null,
+        issueSourceOther:
+          issueSource === 'OTHR-IS' ? issueSourceOther.trim() || null : null,
+        dateReceived: dateReceived || null,
+        ownerUserId,
+        complaintType:
+          bundle.issue.issueType === 'COMPLAINT' ? complaintType || null : null,
+        serviceProvider: isMosp ? serviceProvider.trim() : null,
+      });
+      Alert.alert('Saved', 'Case updated.');
       await load(true);
     } catch (e: any) {
-      Alert.alert(
-        'Could not update owner',
-        e?.message || 'Please try again.',
-      );
+      Alert.alert('Could not save', e?.message || 'Please try again.');
     } finally {
-      setSavingOwner(false);
+      setSaving(false);
     }
   };
 
@@ -605,64 +725,194 @@ const CaseDetailScreen = () => {
 
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Description</Text>
-            <Text style={styles.bodyText}>{issue.description}</Text>
+            {canEdit ? (
+              <View style={styles.textAreaWrap}>
+                <TextInput
+                  style={styles.textArea}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Description of the issue..."
+                  placeholderTextColor={Colors.textPlaceholder}
+                  multiline
+                  textAlignVertical="top"
+                />
+              </View>
+            ) : (
+              <Text style={styles.bodyText}>{issue.description}</Text>
+            )}
+            {canEdit ? (
+              <>
+                <Text style={[styles.cardLabel, styles.cardLabelSpaced]}>
+                  Availability
+                </Text>
+                <TextField
+                  value={availability}
+                  onChangeText={setAvailability}
+                  placeholder="Availability notes..."
+                />
+              </>
+            ) : issue.availability !== '—' ? (
+              <>
+                <Text style={[styles.cardLabel, styles.cardLabelSpaced]}>
+                  Availability
+                </Text>
+                <Text style={styles.bodyText}>{issue.availability}</Text>
+              </>
+            ) : null}
           </View>
 
           <SectionCard
             title="Details"
-            subtitle="Type, priority, source, ownership"
+            subtitle={
+              canEdit
+                ? 'Edit priority, source, ownership — then Save'
+                : 'Type, priority, source, ownership'
+            }
             expanded={detailsOpen}
             onToggle={() => setDetailsOpen(v => !v)}>
             <FieldRow label="Issue type" value={issue.issueTypeLabel} />
-            <FieldRow label="Complaint type" value={issue.complaintTypeLabel} />
+            {canEdit && issue.issueType === 'COMPLAINT' ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Complaint type" />
+                <SelectField
+                  value={complaintType}
+                  placeholder="Select complaint type"
+                  options={complaintTypeOptions}
+                  onSelect={setComplaintType}
+                />
+              </View>
+            ) : (
+              <FieldRow
+                label="Complaint type"
+                value={issue.complaintTypeLabel}
+              />
+            )}
             <FieldRow
               label="Status"
               value={formatIssueEnumLabel(issue.issueStatus)}
             />
-            <FieldRow label="Priority" value={issue.priorityLabel} />
-            <FieldRow label="Date received" value={issue.dateReceived} />
-            <FieldRow label="Origin" value={issue.origin} />
-            <FieldRow label="Issue source" value={issue.issueSource} />
+            {canEdit ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Priority" />
+                <SelectField
+                  value={priority}
+                  placeholder="Select priority"
+                  options={priorityOptions}
+                  onSelect={setPriority}
+                />
+              </View>
+            ) : (
+              <FieldRow label="Priority" value={issue.priorityLabel} />
+            )}
+            {canEdit ? (
+              <View style={styles.editField}>
+                <DatePicker
+                  label="Date received"
+                  value={dateReceived}
+                  onChange={e => setDateReceived(e.target.value)}
+                  disableAgeValidation
+                />
+              </View>
+            ) : (
+              <FieldRow label="Date received" value={issue.dateReceived} />
+            )}
+            {canEdit ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Origin" />
+                <SelectField
+                  value={origin}
+                  placeholder="Select origin"
+                  options={originOptions}
+                  onSelect={setOrigin}
+                />
+              </View>
+            ) : (
+              <FieldRow label="Origin" value={issue.origin} />
+            )}
+            {canEdit ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Issue source" />
+                <SelectField
+                  value={issueSource}
+                  placeholder="Select source"
+                  options={issueSourceOptions}
+                  onSelect={setIssueSource}
+                />
+              </View>
+            ) : (
+              <FieldRow label="Issue source" value={issue.issueSource} />
+            )}
+            {canEdit && issueSource === 'OTHR-IS' ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Issue source (other)" />
+                <TextField
+                  value={issueSourceOther}
+                  onChangeText={setIssueSourceOther}
+                  placeholder="Specify other source"
+                />
+              </View>
+            ) : null}
+            {canEdit && isMosp ? (
+              <View style={styles.editField}>
+                <FieldLabel label="Service provider" required />
+                <TextField
+                  value={serviceProvider}
+                  onChangeText={setServiceProvider}
+                  placeholder="Enter service provider"
+                />
+              </View>
+            ) : issue.serviceProvider !== '—' ? (
+              <FieldRow
+                label="Service provider"
+                value={displayOrDash(issue.serviceProvider)}
+              />
+            ) : null}
             <FieldRow label="Complainant" value={issue.complainant} />
             <FieldRow label="Owner team" value={issue.ownerTeam} />
             <View style={styles.ownerBlock}>
               <FieldLabel label="Owner (User Id)" />
-              {loadingOwners ? (
-                <View style={styles.ownerLoading}>
-                  <ActivityIndicator color={Colors.primary} size="small" />
-                  <Text style={styles.ownerLoadingText}>Loading owners…</Text>
-                </View>
+              {canEdit ? (
+                loadingOwners ? (
+                  <View style={styles.ownerLoading}>
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                    <Text style={styles.ownerLoadingText}>Loading owners…</Text>
+                  </View>
+                ) : (
+                  <SelectField
+                    value={ownerUserId}
+                    placeholder="Select owner"
+                    options={ownerOptions}
+                    onSelect={setOwnerUserId}
+                  />
+                )
               ) : (
-                <SelectField
-                  value={ownerUserId}
-                  placeholder="Select owner"
-                  options={ownerOptions}
-                  onSelect={setOwnerUserId}
-                />
-              )}
-              {!isClosed ? (
-                <TouchableOpacity
-                  style={[
-                    styles.ownerSaveBtn,
-                    (!ownerDirty || savingOwner) && styles.ownerSaveBtnDisabled,
-                  ]}
-                  onPress={onSaveOwner}
-                  disabled={!ownerDirty || savingOwner}
-                  activeOpacity={0.85}>
-                  {savingOwner ? (
-                    <ActivityIndicator color={Colors.surface} size="small" />
-                  ) : (
-                    <Text style={styles.ownerSaveText}>Save assignment</Text>
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.ownerClosedHint}>
-                  Owner cannot be changed on a closed case.
+                <Text style={styles.fieldValue}>
+                  {displayOrDash(issue.ownerUserId)}
                 </Text>
               )}
             </View>
             <FieldRow label="Created" value={issue.createdOn} />
             <FieldRow label="Last updated" value={issue.updatedAt} last />
+            {canEdit ? (
+              <TouchableOpacity
+                style={[
+                  styles.saveChangesBtn,
+                  saving && styles.saveChangesBtnDisabled,
+                ]}
+                onPress={onSaveChanges}
+                disabled={saving}
+                activeOpacity={0.85}>
+                {saving ? (
+                  <ActivityIndicator color={Colors.surface} size="small" />
+                ) : (
+                  <Text style={styles.saveChangesText}>Save changes</Text>
+                )}
+              </TouchableOpacity>
+            ) : isClosed ? (
+              <Text style={styles.ownerClosedHint}>
+                Closed cases cannot be edited.
+              </Text>
+            ) : null}
           </SectionCard>
 
           <SectionCard
@@ -963,11 +1213,37 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 8,
   },
+  cardLabelSpaced: {
+    marginTop: 14,
+  },
   bodyText: {
     fontSize: 14,
     lineHeight: 22,
     fontFamily: FontFamily.regular,
     color: Colors.textPrimary,
+  },
+  textAreaWrap: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 100,
+  },
+  textArea: {
+    fontFamily: FontFamily.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.textPrimary,
+    minHeight: 80,
+    padding: 0,
+  },
+  editField: {
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+    gap: 6,
   },
   sectionCard: {
     backgroundColor: Colors.surface,
@@ -1057,26 +1333,26 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontFamily: FontFamily.regular,
   },
-  ownerSaveBtn: {
-    marginTop: 4,
-    alignSelf: 'flex-start',
+  saveChangesBtn: {
+    marginTop: 14,
     backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: Radii.md,
-    minWidth: 140,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
-  ownerSaveBtnDisabled: {
-    opacity: 0.45,
+  saveChangesBtnDisabled: {
+    opacity: 0.55,
   },
-  ownerSaveText: {
+  saveChangesText: {
     color: Colors.surface,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FontFamily.semiBold,
-    fontWeight: '700',
   },
   ownerClosedHint: {
+    marginTop: 10,
     fontSize: 12,
     color: Colors.textSecondary,
     fontFamily: FontFamily.regular,

@@ -121,10 +121,15 @@ export type CaseDetailModel = {
   originCode: string;
   issueSource: string;
   issueSourceCode: string;
+  issueSourceOther: string;
   complainant: string;
   ownerTeam: string;
   ownerUserId: string;
+  /** Staff user id who created the issue (for edit permission). */
+  createdBy: string;
   dateReceived: string;
+  /** ISO date for DatePicker / PUT payload. */
+  dateReceivedIso: string;
   createdOn: string;
   updatedAt: string;
   dateResolved: string;
@@ -177,11 +182,16 @@ export const mapIssueToDetail = (iss: any): CaseDetailModel | null => {
     issueSource:
       formatIssueEnumLabel(iss?.issueSource) || displayValue(iss?.issueSource),
     issueSourceCode: String(iss?.issueSource || ''),
+    issueSourceOther: String(iss?.issueSourceOther || '').trim(),
     complainant: memberFromIssue(iss),
     ownerTeam: displayValue(iss?.owner?.team),
     /** Raw staff user id for assignment pickers (not display-formatted). */
     ownerUserId: String(iss?.owner?.userId || '').trim(),
+    createdBy: String(iss?.createdBy || '').trim(),
     dateReceived: formatCaseDate(iss?.dateReceived),
+    dateReceivedIso: iss?.dateReceived
+      ? new Date(iss.dateReceived).toISOString()
+      : '',
     createdOn: formatCaseDateTime(iss?.createdOn || iss?.createdAt),
     updatedAt: formatCaseDateTime(iss?.updatedAt),
     dateResolved: formatCaseDate(iss?.dateResolved),

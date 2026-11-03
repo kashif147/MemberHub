@@ -14,7 +14,8 @@ export type MoreStackParamList = {
   [STACKS.SETTINGS]: undefined;
   [STACKS.MY_DRIVES]: undefined;
   [STACKS.DRIVE_DETAILS]: { driveId: string };
-  [STACKS.CREATE_DRIVE]: undefined;
+  /** Omit driveId to create; pass driveId to edit (PUT /membership-drives/:id). */
+  [STACKS.CREATE_DRIVE]: { driveId?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<MoreStackParamList>();
