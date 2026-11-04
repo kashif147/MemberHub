@@ -95,9 +95,8 @@ const PersonalInformation = ({
       callingCode: String(country.callingCode?.[0] || country.callingCode || ''),
     };
     setSelectedCountry(nextCountry);
-    const fullNumber = normalizeMobileToE164(
-      buildMobileE164(nextCountry.callingCode, phoneNumber),
-    );
+    // Use explicit country code; do not re-detect another country from digits.
+    const fullNumber = buildMobileE164(nextCountry.callingCode, phoneNumber);
     lastWrittenMobileRef.current = fullNumber;
     onFormDataChange({ ...formData, mobileNo: fullNumber });
   };
@@ -105,8 +104,9 @@ const PersonalInformation = ({
   const handlePhoneNumberChange = (text: string) => {
     const cleanedText = text.replace(/[^0-9]/g, '');
     setPhoneNumber(cleanedText);
-    const fullNumber = normalizeMobileToE164(
-      buildMobileE164(selectedCountry.callingCode, cleanedText),
+    const fullNumber = buildMobileE164(
+      selectedCountry.callingCode,
+      cleanedText,
     );
     lastWrittenMobileRef.current = fullNumber;
     onFormDataChange({ ...formData, mobileNo: fullNumber });

@@ -18,6 +18,7 @@ import PersonalInformation from './PersonalInformation';
 import ProfessionalDetails from './ProfessionalDetails';
 import SubscriptionDetails from './SubscriptionDetails';
 import SubscriptionPaymentModal from './SubscriptionPaymentModal';
+import PaymentLinkModal from './PaymentLinkModal';
 import { useLookup } from '../../contexts/lookupContext';
 import {
   createPersonalDetailRequest,
@@ -43,9 +44,11 @@ import { calculateAgeFromDateOfBirth } from '../../helpers/date.helper';
 import { isValidMobileE164 } from '../../helpers/phone.helper';
 import {
   getFrequencyOptionsForPaymentType,
+  isCreditCardPaymentType,
   isSalaryDeductionPaymentType,
 } from '../../helpers/subscriptionPricing.helper';
 import { APPLICATION_PAYMENT_AUTHORISED_MESSAGE } from '../../helpers/paymentIntent.helper';
+import type { ApplicationPaymentView } from '../../services/applicationPaymentLink.services';
 
 const steps = [
   { number: 1, title: 'Personal' },
@@ -124,9 +127,19 @@ const ApplicationScreen = () => {
   const [hasSubscription, setHasSubscription] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [shouldShowModal, setShouldShowModal] = useState(false);
+  const [paymentLinkVisible, setPaymentLinkVisible] = useState(false);
+  const [shouldShowPaymentLink, setShouldShowPaymentLink] = useState(false);
   const [driveLinked, setDriveLinked] = useState(false);
 
-  // Portal: show payment modal after subscription is saved
+  // MemberHub: deferred payment link after subscription (profile-service payment-link).
+  useEffect(() => {
+    if (shouldShowPaymentLink) {
+      setPaymentLinkVisible(true);
+      setShouldShowPaymentLink(false);
+    }
+  }, [shouldShowPaymentLink]);
+
+  // Optional on-device Stripe checkout (Credit Card) from PaymentLinkModal.
   useEffect(() => {
     if (shouldShowModal) {
       setIsModalVisible(true);
@@ -334,6 +347,7 @@ const ApplicationScreen = () => {
   const handlePaymentSuccess = (paymentData: Record<string, any>) => {
     // Portal Application.js: close modal, then authorised / completed Alert
     setIsModalVisible(false);
+    setPaymentLinkVisible(false);
     const outcome = paymentData?.paymentOutcome;
     const title = outcome?.title || 'Payment authorised';
     const message =
@@ -348,6 +362,33 @@ const ApplicationScreen = () => {
 
   const handlePaymentFailure = (_message?: string) => {
     // Modal shows the Alert and stays open for retry — do not close here
+  };
+
+  const handlePaymentLinkDone = (payment?: ApplicationPaymentView) => {
+    setPaymentLinkVisible(false);
+    const status = String(payment?.status || '').toUpperCase();
+    if (status === 'LINK_ISSUED' || status === 'LINK_REQUESTED') {
+      finishBulkRegister(
+        'A payment link was sent to the member. They can complete checkout by email.',
+      );
+      return;
+    }
+    if (
+      status === 'AUTHORISED' ||
+      status === 'CAPTURED' ||
+      status === 'AUTHORISATION_EXPIRING'
+    ) {
+      finishBulkRegister('Payment is authorised for this application.');
+      return;
+    }
+    finishBulkRegister(
+      'Application saved. You can send a payment link later from this application.',
+    );
+  };
+
+  const openCardCheckoutFromLink = () => {
+    setPaymentLinkVisible(false);
+    setShouldShowModal(true);
   };
 
   const savePersonalStep = async () => {
@@ -440,11 +481,11 @@ const ApplicationScreen = () => {
 
       setHasSubscription(true);
 
-      // Portal: undergrads skip payment; others open SubscriptionPaymentModal
+      // Undergrads skip payment; others open deferred payment-link flow (MEMBERSHUB).
       if (isUndergraduateStudent) {
         finishBulkRegister();
       } else {
-        setShouldShowModal(true);
+        setShouldShowPaymentLink(true);
       }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Unable to save subscription details');
@@ -633,6 +674,18 @@ const ApplicationScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <PaymentLinkModal
+        visible={paymentLinkVisible}
+        applicationId={applicationId}
+        personalInfo={formData.personalInfo}
+        allowCardCheckout={isCreditCardPaymentType(
+          formData.subscriptionDetails?.paymentType,
+        )}
+        onClose={() => handlePaymentLinkDone()}
+        onDone={handlePaymentLinkDone}
+        onCollectCard={openCardCheckoutFromLink}
+      />
 
       <SubscriptionPaymentModal
         visible={isModalVisible}

@@ -14,6 +14,16 @@ export const isAnnualAutoPaymentType = (paymentType?: string) => {
   );
 };
 
+/** Credit / card payment — may collect card on-device or send a FULL payment link. */
+export const isCreditCardPaymentType = (paymentType?: string) => {
+  const normalized = normalizePaymentType(paymentType);
+  return (
+    normalized.includes('credit card') ||
+    normalized === 'card payment' ||
+    normalized === 'card'
+  );
+};
+
 export const isStandingOrderPaymentType = (paymentType?: string) =>
   normalizePaymentType(paymentType).includes('standing');
 

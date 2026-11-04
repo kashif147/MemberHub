@@ -172,6 +172,27 @@ const detectCallingCodeFromDigits = (digits: string) => {
   return null;
 };
 
+/**
+ * Build E.164 from an explicit country calling code + national digits.
+ * Never re-detects another country inside the national number — that wrongly
+ * turned IE numbers like 92… into +92… (Pakistan) when Ireland was selected.
+ */
+export const buildMobileE164 = (
+  callingCode?: string,
+  nationalNumber?: string,
+) => {
+  const code = String(callingCode || '').replace(/\D/g, '');
+  let national = toDigits(nationalNumber);
+  if (!code || !national) return '';
+  // Drop a single leading 0 (common domestic prefix, e.g. Irish 087…).
+  if (national.startsWith('0')) national = national.slice(1);
+  // Avoid +353353… if the national field already includes the calling code.
+  if (national.startsWith(code) && national.length > code.length + 5) {
+    national = national.slice(code.length);
+  }
+  return `+${code}${national}`;
+};
+
 export const normalizeMobileToE164 = (
   mobileNo?: string,
   defaultCountry = 'IE',
@@ -179,25 +200,18 @@ export const normalizeMobileToE164 = (
   const raw = String(mobileNo || '').trim();
   if (!raw) return '';
 
+  // Already international — keep as-is (do not reinterpret national digits as
+  // another country; that broke IE + national numbers starting with 91/92/…).
   if (raw.startsWith('+')) {
     const digits = toDigits(raw);
-    const detected = detectCallingCodeFromDigits(digits);
-    if (detected?.callingCode === '353' && detected.nationalNumber) {
-      const nested = detectCallingCodeFromDigits(detected.nationalNumber);
-      if (nested && nested.callingCode !== '353') {
-        return `+${nested.callingCode}${nested.nationalNumber}`;
-      }
-    }
-    return raw.replace(/\s+/g, '');
+    return digits ? `+${digits}` : '';
   }
 
   const digits = toDigits(raw);
   if (!digits) return '';
   if (digits.startsWith('00')) return `+${digits.slice(2)}`;
 
-  const detected = detectCallingCodeFromDigits(digits);
-  if (detected) return `+${detected.callingCode}${detected.nationalNumber}`;
-  if (digits.startsWith('353')) return `+${digits}`;
+  // Irish domestic forms without a picker context.
   if (defaultCountry === 'IE' && digits.startsWith('08')) {
     return `+353${digits.slice(1)}`;
   }
@@ -208,6 +222,21 @@ export const normalizeMobileToE164 = (
     digits.length <= 10
   ) {
     return `+353${digits}`;
+  }
+  if (digits.startsWith('353') && digits.length >= 12) {
+    return `+${digits}`;
+  }
+
+  // Bare digits with no +: only auto-detect when it looks like a full
+  // international number (not a short national mobile).
+  const detected = detectCallingCodeFromDigits(digits);
+  if (detected && digits.length >= 11) {
+    return `+${detected.callingCode}${detected.nationalNumber}`;
+  }
+
+  if (defaultCountry === 'IE') {
+    const national = digits.startsWith('0') ? digits.slice(1) : digits;
+    return national ? `+353${national}` : '';
   }
   if (digits.startsWith('0')) return digits;
   return `+${digits}`;
@@ -226,14 +255,9 @@ export const splitMobileNumber = (
     };
   }
 
-  const normalized = normalizeMobileToE164(raw);
+  const normalized = normalizeMobileToE164(raw, defaultCountry.cca2);
   const digits = toDigits(normalized.startsWith('+') ? normalized : raw);
-  let detected = detectCallingCodeFromDigits(digits);
-
-  if (detected?.callingCode === '353' && detected.nationalNumber) {
-    const nested = detectCallingCodeFromDigits(detected.nationalNumber);
-    if (nested && nested.callingCode !== '353') detected = nested;
-  }
+  const detected = detectCallingCodeFromDigits(digits);
 
   if (detected) {
     return {
@@ -251,16 +275,6 @@ export const splitMobileNumber = (
     callingCode: defaultCountry.callingCode,
     nationalNumber,
   };
-};
-
-export const buildMobileE164 = (
-  callingCode?: string,
-  nationalNumber?: string,
-) => {
-  const code = String(callingCode || '').replace(/\D/g, '');
-  const national = toDigits(nationalNumber);
-  if (!code || !national) return '';
-  return `+${code}${national}`;
 };
 
 export const isValidMobileE164 = (
